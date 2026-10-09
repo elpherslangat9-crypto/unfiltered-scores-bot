@@ -1,4 +1,4 @@
-name: Unfiltered Scores Live 🟢 WORLD NO.1
+name: Unfiltered Scores V3 TEXT ONLY 🟢
 
 on:
   workflow_dispatch:
@@ -10,18 +10,13 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 350
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v4
         with:
           python-version: '3.11'
-
-      - name: Install deps
+      - name: Install
         run: pip install requests --quiet
-
-      - name: Run 24/7 Bot
+      - name: Run Bot
         run: python bot.py
         env:
           API_KEY: ${{ secrets.API_KEY }}
