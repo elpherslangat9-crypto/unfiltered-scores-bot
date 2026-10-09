@@ -3,11 +3,7 @@ name: Unfiltered Scores Live 🟢 WORLD NO.1
 on:
   workflow_dispatch:
   schedule:
-    - cron: '*/10 * * * *'
-
-concurrency:
-  group: unfiltered-live
-  cancel-in-progress: true
+    - cron: '0 */6 * * *'
 
 jobs:
   bot:
