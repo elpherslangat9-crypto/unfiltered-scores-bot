@@ -1,0 +1,46 @@
+name: Unfiltered Scores Live 🟢 WORLD NO.1
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '*/10 * * * *'  # Checks every 10 mins to restart if dead
+  push:
+    branches: [ main ]
+
+# Stop old bot if new one starts - no double posting
+concurrency:
+  group: unfiltered-live
+  cancel-in-progress: true
+
+jobs:
+  bot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350  # GitHub max is 360, we stop at 350 and restart fresh
+    
+    steps:
+      - name: 🟢 Checkout
+        uses: actions/checkout@v4
+
+      - name: 🟢 Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: 🟢 Install
+        run: pip install requests --quiet
+
+      - name: 🟢 Run Bot 24/7
+        run: |
+          echo "🟢 UNFILTERED SCORES STARTING - $(date)"
+          echo "Live monitoring ALL leagues + KPL..."
+          python bot.py
+        env:
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FB_TOKEN: ${{ secrets.FB_TOKEN }}
+
+      - name: 🟢 If crashed - Restart
+        if: failure()
+        run: |
+          echo "Bot crashed - GitHub will auto-restart in 10 mins via cron 🟢"
+          sleep 5
