@@ -15,9 +15,6 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: write
-    concurrency:
-      group: unfiltered-live
-      cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@v4
@@ -33,6 +30,8 @@ jobs:
 
       - name: Restore state
         run: |
+          ls -lh
+          cat posted_events.json || echo "no file"
           if [! -f posted_events.json ]; then
             echo '{"events":[],"lineups":[],"ft":[],"ht":[],"news":[],"transfers":[],"daily":[]}' > posted_events.json
           fi
@@ -48,17 +47,13 @@ jobs:
         if: always()
         run: |
           git config user.name "UnfilteredScores Bot"
-          git config user.email "bot@unfilteredscores.com"
-          git add posted_events.json || true
-          if! git diff --staged --quiet; then
-            git commit -m "Update state [skip ci]"
-            git pull --rebase origin main || true
-            git push origin HEAD:main || true
-          fi
+          git config user.email "bot@bot.com"
+          git add posted_events.json
+          git commit -m "update state [skip ci]" || true
+          git push || true
 
       - name: Log summary
         if: always()
         run: |
           echo "RUN OK"
-          date -u
-          ls -lh posted_events.json || echo "no file yet"
+          ls -lh posted_events.json
