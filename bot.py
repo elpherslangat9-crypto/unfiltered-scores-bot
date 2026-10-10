@@ -1,7 +1,6 @@
-# bot.py - V20.2 - 12 Leagues + Daily 8AM Fixtures 🟢
-
+# bot.py - V20.3 FIXED - 12 Leagues + 1-min loop
 import os, json, time, requests
-from datetime import datetime
+from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 
 PAGE_ID = os.getenv("PAGE_ID", "").strip()
@@ -59,6 +58,7 @@ def get_all_events():
                 e["_league_code"] = code
                 e["_league_name"] = name
             all_ev.extend(evs)
+            print(f"{code} -> {len(evs)}")
         except Exception as e:
             print(f"{code} err {e}")
     return all_ev
@@ -66,44 +66,36 @@ def get_all_events():
 def main():
     state = load_state()
     now = datetime.now(EAT)
-    print(f"V20.2 - {now.strftime('%Y-%m-%d %H:%M')} EAT Leagues:{len(LEAGUES)}")
+    print(f"V20.3 FIXED - {now.strftime('%Y-%m-%d %H:%M')} EAT Leagues:{len(LEAGUES)}")
     events = get_all_events()
     posted = 0
 
-    # --- DAILY FIXTURES AT 8AM EAT (once per day) ---
     today_str = now.strftime("%Y-%m-%d")
-    hour = now.hour
-    # Post if hour is 5-10 UTC which is 8-13 EAT, and not posted today
-    if state.get("daily_date")!= today_str and 5 <= now.astimezone(timezone.utc).hour <= 13 or True: # always try first run
-        if state.get("daily_date")!= today_str and len(events) > 0:
-            # Build fixtures list grouped by league
-            by_league = {}
-            for ev in events:
-                lname = ev["_league_name"]
-                comps = ev.get("competitions", [])
-                if not comps: continue
-                c = comps[0]
-                competitors = c.get("competitors", [])
-                if len(competitors) < 2: continue
-                home = next((x for x in competitors if x.get("homeAway")=="home"), competitors[0])
-                away = next((x for x in competitors if x.get("homeAway")=="away"), competitors[-1])
-                h = home.get("team",{}).get("displayName","")
-                a = away.get("team",{}).get("displayName","")
-                time_str = c.get("status",{}).get("type",{}).get("detail","")[:12]
-                by_league.setdefault(lname, []).append(f"{h} vs {a} ({time_str})")
-
-            if by_league:
-                msg = f"🟢 TODAY'S FIXTURES - {today_str}\n📅 {now.strftime('%A %d %B')}\n\n"
-                for lname, games in by_league.items():
-                    msg += f"{lname} ({len(games)})\n"
-                    for g in games[:6]:
-                        msg += f"• {g}\n"
-                    msg += "\n"
-                msg += f"Total: {len(events)} matches in 12 Leagues 🟢\n#Fixtures #LiveScores"
-                if fb_post(msg):
-                    state["daily_date"] = today_str
-                    posted+=1
-                    time.sleep(3)
+    if state.get("daily_date")!= today_str and len(events) > 0:
+        by_league = {}
+        for ev in events:
+            lname = ev["_league_name"]
+            comps = ev.get("competitions", [])
+            if not comps: continue
+            c = comps[0]
+            competitors = c.get("competitors", [])
+            if len(competitors) < 2: continue
+            home = next((x for x in competitors if x.get("homeAway")=="home"), competitors[0])
+            away = next((x for x in competitors if x.get("homeAway")=="away"), competitors[-1])
+            h = home.get("team",{}).get("displayName","")
+            a = away.get("team",{}).get("displayName","")
+            by_league.setdefault(lname, []).append(f"{h} vs {a}")
+        if by_league:
+            msg = f"🟢 TODAY'S FIXTURES - {today_str}\n📅 {now.strftime('%A %d %B')}\n\n"
+            for lname, games in by_league.items():
+                msg += f"{lname} ({len(games)})\n"
+                for g in games[:6]:
+                    msg += f"• {g}\n"
+                msg += "\n"
+            msg += f"Total: {len(events)} matches 🟢"
+            if fb_post(msg):
+                state["daily_date"] = today_str
+                posted+=1
 
     for ev in events:
         ev_id = ev.get("id")
@@ -113,8 +105,6 @@ def main():
         c = comps[0]
         status = c.get("status", {}).get("type", {})
         s_name = status.get("name", "")
-        detail = status.get("detail", "")
-
         competitors = c.get("competitors", [])
         if len(competitors) < 2: continue
         home = next((x for x in competitors if x.get("homeAway")=="home"), competitors[0])
@@ -164,23 +154,21 @@ def main():
                             posted+=1
                             time.sleep(3)
 
-        if "HALFTIME" in s_name.upper() or "Halftime" in detail:
+        if "HALFTIME" in s_name.upper():
             if ev_id not in state["ht"]:
                 msg = f"🟢 HALF TIME - {comp}\n\n{h_team} {h_score} - {a_score} {a_team}\n\n#HT 🟢"
                 if fb_post(msg):
                     state["ht"][ev_id]=True
                     posted+=1
-                    time.sleep(2)
         if s_name == "STATUS_FINAL":
             if ev_id not in state["ft"]:
                 msg = f"🟢 FULL TIME - {comp}\n\n{h_team} {h_score} - {a_score} {a_team}\n\n✅ FT\n\n#FT 🟢"
                 if fb_post(msg):
                     state["ft"][ev_id]=True
                     posted+=1
-                    time.sleep(2)
 
     try:
-        news = requests.get(ESPN_NEWS+"?limit=25", timeout=12).json().get("articles", [])
+        news = requests.get(ESPN_NEWS+"?limit=20", timeout=12).json().get("articles", [])
         for art in news:
             title = art.get("headline","")
             if not title: continue
@@ -193,15 +181,12 @@ def main():
                         state["transfers"].append(title)
                         state["transfers"] = state["transfers"][-80:]
                         posted+=1
-                        time.sleep(3)
-            if posted>=8: break
+            if posted>=6: break
     except Exception as e:
         print(f"news err {e}")
 
-    from datetime import timezone
-    print(f"V20.2 Done - Posted:{posted} Events:{len(events)}")
+    print(f"V20.3 Done - Posted:{posted} Events:{len(events)}")
     save_state(state)
 
 if __name__ == "__main__":
-    from datetime import timezone
     main()
