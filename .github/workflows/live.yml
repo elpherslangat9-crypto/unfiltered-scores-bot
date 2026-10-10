@@ -52,12 +52,13 @@ jobs:
           git add posted_events.json || true
           if! git diff --staged --quiet; then
             git commit -m "Update state [skip ci]"
-            git push || (git pull --rebase && git push)
+            git pull --rebase origin main || true
+            git push origin HEAD:main || true
           fi
 
       - name: Log summary
         if: always()
         run: |
-          echo "=== RUN SUMMARY ==="
+          echo "RUN OK"
           date -u
-          ls -lh posted_events.json || echo "no state"
+          ls -lh posted_events.json || echo "no file yet"
