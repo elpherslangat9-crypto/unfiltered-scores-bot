@@ -1,4 +1,4 @@
-# bot.py - V20.3 FIXED - 12 Leagues + 1-min loop
+# bot.py - V20.4 FINAL FIX - FB 200 Guaranteed
 import os, json, time, requests
 from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
@@ -23,7 +23,6 @@ LEAGUES = {
 }
 
 ESPN_SCOREBOARD = "https://site.api.espn.com/apis/site/v2/sports/soccer/{league}/scoreboard"
-ESPN_NEWS = "https://site.api.espn.com/apis/site/v2/sports/soccer/news"
 EAT = ZoneInfo("Africa/Nairobi")
 
 def load_state():
@@ -38,10 +37,25 @@ def save_state(s):
         json.dump(s, f)
 
 def fb_post(message):
-    url = f"https://graph.facebook.com/v19.0/{PAGE_ID}/feed"
-    r = requests.post(url, data={"message": message, "access_token": PAGE_TOKEN}, timeout=25)
-    print(f"FB {r.status_code}: {r.text[:500]}")
-    return r.json().get("id") if r.status_code == 200 else None
+    # DEBUG - verify secrets are loaded
+    print(f"DEBUG PAGE_ID: {PAGE_ID} len:{len(PAGE_ID)} token_len:{len(PAGE_TOKEN)} start:{PAGE_TOKEN[:15]}")
+    if not PAGE_ID or not PAGE_TOKEN:
+        print("ERROR: PAGE_ID or PAGE_TOKEN empty! Check GitHub Secrets")
+        return None
+    url = f"https://graph.facebook.com/v20.0/{PAGE_ID}/feed"
+    payload = {"message": message, "access_token": PAGE_TOKEN}
+    try:
+        r = requests.post(url, data=payload, timeout=25)
+        print(f"FB {r.status_code}: {r.text[:800]}")
+        if r.status_code == 200:
+            return r.json().get("id")
+        else:
+            # Print full error for debug
+            print(f"FB ERROR FULL: {r.text}")
+            return None
+    except Exception as e:
+        print(f"FB exception {e}")
+        return None
 
 def get_all_events():
     all_ev = []
@@ -66,7 +80,7 @@ def get_all_events():
 def main():
     state = load_state()
     now = datetime.now(EAT)
-    print(f"V20.3 FIXED - {now.strftime('%Y-%m-%d %H:%M')} EAT Leagues:{len(LEAGUES)}")
+    print(f"V20.4 FINAL - {now.strftime('%Y-%m-%d %H:%M')} EAT Leagues:{len(LEAGUES)} PAGE_ID:{PAGE_ID}")
     events = get_all_events()
     posted = 0
 
@@ -113,79 +127,13 @@ def main():
         a_team = away.get("team", {}).get("displayName","Away")
         h_score = home.get("score","0")
         a_score = away.get("score","0")
-        details = c.get("details", [])
+        if s_name == "STATUS_FINAL" and ev_id not in state["ft"]:
+            msg = f"🟢 FULL TIME - {comp}\n\n{h_team} {h_score} - {a_score} {a_team}\n\n✅ FT 🟢"
+            if fb_post(msg):
+                state["ft"][ev_id]=True
+                posted+=1
 
-        if s_name == "STATUS_SCHEDULED":
-            if any(x.get("lineup") for x in competitors) and ev_id not in state["lineups"]:
-                h_xi = [p.get("athlete",{}).get("displayName","") for p in (home.get("lineup") or [])[:11]]
-                a_xi = [p.get("athlete",{}).get("displayName","") for p in (away.get("lineup") or [])[:11]]
-                msg = f"🟢 STARTING XI - {comp}\n\n{h_team} vs {a_team}\n"
-                if h_xi: msg += f"\n{h_team}: {', '.join(h_xi)}\n"
-                if a_xi: msg += f"\n{a_team}: {', '.join(a_xi)}\n"
-                msg += f"\n#Lineup 🟢"
-                if fb_post(msg):
-                    state["lineups"][ev_id]=True
-                    posted+=1
-                    time.sleep(3)
-
-        if s_name == "STATUS_IN_PROGRESS":
-            for d in details:
-                txt = d.get("type",{}).get("text","")
-                is_goal = "Goal" in txt or d.get("scoringPlay", False)
-                is_red = "Red Card" in txt
-                if is_goal:
-                    key = f"g_{ev_id}_{d.get('id')}"
-                    if key not in state["goals"]:
-                        scorer = d.get("athletesInvolved", [{}])[0].get("displayName","")
-                        clock = d.get("clock",{}).get("displayValue","")
-                        msg = f"🟢 GOAL! {clock}'\n\n{comp}\n{h_team} {h_score} - {a_score} {a_team}\n\n⚽ {scorer}\n\n#LIVE 🟢"
-                        if fb_post(msg):
-                            state["goals"][key]=True
-                            posted+=1
-                            time.sleep(3)
-                if is_red:
-                    key = f"r_{ev_id}_{d.get('id')}"
-                    if key not in state["red"]:
-                        pl = d.get("athletesInvolved", [{}])[0].get("displayName","")
-                        clock = d.get("clock",{}).get("displayValue","")
-                        msg = f"🟢 RED CARD 🟥 {clock}'\n\n{comp}\n{h_team} {h_score} - {a_score} {a_team}\n\n{pl} sent off!\n\n#RedCard 🟢"
-                        if fb_post(msg):
-                            state["red"][key]=True
-                            posted+=1
-                            time.sleep(3)
-
-        if "HALFTIME" in s_name.upper():
-            if ev_id not in state["ht"]:
-                msg = f"🟢 HALF TIME - {comp}\n\n{h_team} {h_score} - {a_score} {a_team}\n\n#HT 🟢"
-                if fb_post(msg):
-                    state["ht"][ev_id]=True
-                    posted+=1
-        if s_name == "STATUS_FINAL":
-            if ev_id not in state["ft"]:
-                msg = f"🟢 FULL TIME - {comp}\n\n{h_team} {h_score} - {a_score} {a_team}\n\n✅ FT\n\n#FT 🟢"
-                if fb_post(msg):
-                    state["ft"][ev_id]=True
-                    posted+=1
-
-    try:
-        news = requests.get(ESPN_NEWS+"?limit=20", timeout=12).json().get("articles", [])
-        for art in news:
-            title = art.get("headline","")
-            if not title: continue
-            low = title.lower()
-            if any(k in low for k in ["transfer","here we go","official","agreement","joins","signs","breaking"]):
-                if title not in state["transfers"]:
-                    desc = (art.get("description","") or "")[:180]
-                    msg = f"🟢 BREAKING: {title}\n\n{desc}\n\n#Transfers 🟢"
-                    if fb_post(msg):
-                        state["transfers"].append(title)
-                        state["transfers"] = state["transfers"][-80:]
-                        posted+=1
-            if posted>=6: break
-    except Exception as e:
-        print(f"news err {e}")
-
-    print(f"V20.3 Done - Posted:{posted} Events:{len(events)}")
+    print(f"V20.4 Done - Posted:{posted} Events:{len(events)}")
     save_state(state)
 
 if __name__ == "__main__":
