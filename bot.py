@@ -49,18 +49,16 @@ def espn_get(url):
     return {}
 
 def get_scorer_name(d):
-    # FIX for missing names - try all possible fields
     name = d.get('athlete',{}).get('displayName','')
     if not name:
-        # Try participants
         parts = d.get('participants',[])
         if parts:
             name = parts[0].get('athlete',{}).get('displayName','')
     if not name:
-        # Try text "Goal - Player Name"
         txt = d.get('text','') or d.get('type',{}).get('text','')
         if ' - ' in txt:
-            name = txt.split(' - ')[-1].split(')[0].strip()
+            # FIXED LINE - no more quote error
+            name = txt.split(' - ')[-1].split('(')[0].strip()
         else:
             name = txt[:30]
     return name.strip() or "Goal"
@@ -70,7 +68,7 @@ def main():
     now=datetime.now(timezone.utc)
     today=now.strftime("%Y%m%d")
     hour_eat=(now.hour+3)%24
-    print(f"V18 MATCHCORNER STYLE - {today} EAT:{hour_eat}h")
+    print(f"V18.1 FIXED - {today} EAT:{hour_eat}h")
 
     live_found=0
     all_games=[]
@@ -107,27 +105,20 @@ def main():
             if status_state=="pre":
                 all_games.append(f"{home} vs {away} | {league_name} | {ko_eat} EAT")
 
-            # ===== 1. LINEUPS - ONE ROW STYLE (MatchCorner) =====
             if 5 <= mins_to_ko <= 75 and eid not in state["lineups"]:
                 summary=espn_get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_code}/summary?event={eid}")
                 rosters=summary.get("rosters",[])
-                if rosters and len(rosters)>=1:
-                    # No brand duplicate - start direct with title
-                    msg = f"{bold('LINEUPS ARE IN!')}\n"
-                    msg += f"{home} vs {away}\n"
-                    msg += f"🏆 {league_name} | 🕒 {ko_eat} EAT\n"
-                    msg += f"━━━━━━━━━━━━━━\n"
+                if rosters:
+                    msg = f"{bold('LINEUPS ARE IN!')}\n{home} vs {away}\n🏆 {league_name} | 🕒 {ko_eat} EAT\n━━━━━━━━━━━━━━\n"
                     for roster in rosters[:2]:
                         tname=roster['team']['displayName']
                         starters=[p['athlete']['displayName'] for p in roster.get('roster',[]) if p.get('starter')][:11]
                         if starters:
-                            # ONE ROW COMMA STYLE
                             msg += f"\n{tname} XI: {', '.join(starters)}\n"
                     msg += f"\n{TAGLINE} {BRAND}\n{HASHTAGS} #Lineups"
                     if fb_post(msg):
                         state["lineups"].append(eid); save_state(state); return
 
-            # ===== 2. LIVE =====
             if status_state=="in":
                 live_found+=1
                 summary=espn_get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_code}/summary?event={eid}")
@@ -138,24 +129,20 @@ def main():
                     athlete=get_scorer_name(ke)
                     uniq=f"{eid}-{ke_id}-{ke_type}-{clock}"
                     if uniq in state["events"]: continue
-
                     if "Goal" in ke_type:
                         msg = f"{bold('GOOOAL!!!')} {clock}'\n{bold(home)} {hg} - {ag} {bold(away)}\n⚽ {athlete}\n🏆 {league_name}\n\n{TAGLINE} {BRAND}\n{HASHTAGS} #Goal"
                         if fb_post(msg):
                             state["events"].append(uniq); save_state(state); return
-
                     if "Red" in ke_type:
                         team_name=ke.get('team',{}).get('displayName','')
                         msg = f"{bold('RED CARD! 🟥')} {clock}'\n{athlete} ({team_name})\n{home} {hg} - {ag} {away} | {league_name}\n\n{HASHTAGS} #RedCard"
                         if fb_post(msg):
                             state["events"].append(uniq); save_state(state); return
-
                 if "Halftime" in status_detail and eid not in state["ht"]:
                     msg = f"{bold('HALF TIME')}\n{home} {hg} - {ag} {away}\n🏆 {league_name}\n\n{HASHTAGS} #HT"
                     if fb_post(msg):
                         state["ht"].append(eid); save_state(state); return
 
-            # ===== 3. FULL TIME - FIXED SCORERS WITH NAMES =====
             if status_state=="post" and eid not in state["ft"]:
                 summary=espn_get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_code}/summary?event={eid}")
                 details=summary.get("keyEvents",[])
@@ -173,14 +160,13 @@ def main():
                     state["ft"].append(eid); save_state(state); return
         time.sleep(0.25)
 
-    # Daily
     if live_found==0 and hour_eat in [7,8,9] and f"daily-{today}" not in state["daily"]:
         if all_games:
             msg = f"{bold('TODAY FIXTURES')} - {len(all_games)} Games\n━━━━━━━━━━━━━━\n" + "\n".join(all_games[:22]) + f"\n\n{TAGLINE} {BRAND}\n{HASHTAGS}"
             if fb_post(msg):
                 state["daily"].append(f"daily-{today}"); save_state(state); return
 
-    print(f"V18 Done Live:{live_found} Pre:{len(all_games)}")
+    print(f"V18.1 Done Live:{live_found} Pre:{len(all_games)}")
     save_state(state)
 
 if __name__=="__main__":
