@@ -3,7 +3,7 @@ name: Unfiltered Scores V3 TEXT ONLY 🟢
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 */6 * * *'  # Every 6 hours - perfect, no gap
+    - cron: '0 */6 * * *'
 
 jobs:
   bot:
@@ -24,8 +24,9 @@ jobs:
         run: pip install requests --quiet
 
       - name: Run Bot V7 GLOBAL NO.1
-        run: python bot.py
+        run: python -u bot.py
         env:
+          PYTHONUNBUFFERED: 1
           API_KEY: ${{ secrets.API_KEY }}
           API_FOOTBALL_KEY: ${{ secrets.API_KEY }}
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
@@ -38,5 +39,5 @@ jobs:
           git config user.name "bot"
           git config user.email "bot@unfiltered.com"
           git add posted.json || true
-          git diff --staged --quiet || git commit -m "🟢 save memory anti-repeat" || true
+          git diff --staged --quiet || git commit -m "🟢 save memory" || true
           git push || true
