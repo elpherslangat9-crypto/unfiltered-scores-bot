@@ -1,28 +1,87 @@
-name: Unfiltered Scores V11 Ultimate
+name: 🟢 Unfiltered Scores - WORLDWIDE LIVE
+
 on:
   schedule:
-    - cron: '*/10 * * * *' # Every 10 mins = 144/day but we skip when no live, so ~60/day
-  workflow_dispatch:
+    - cron: '*/4 * * * *' # Every 4 mins - covers ALL 80+ leagues fast
+  workflow_dispatch: # Manual run button
+  push:
+    branches: [main]
+    paths:
+      - 'bot.py'
+      - '.github/workflows/live.yml'
+
 jobs:
-  bot:
+  live-scores:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    concurrency:
+      group: unfiltered-live
+      cancel-in-progress: false # Never skip a goal!
+
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
         with:
-          python-version: '3.10'
-      - run: pip install requests
-      - run: python bot.py
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 🐍 Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: 📦 Install deps (only requests)
+        run: |
+          pip install --upgrade pip
+          pip install requests
+          python --version
+
+      - name: 🔄 Restore previous state
+        run: |
+          if [ -f posted_events.json ]; then
+            echo "State exists: $(cat posted_events.json | wc -c) bytes"
+          else
+            echo "No state yet - creating fresh"
+            echo '{"events":[],"lineups":[],"ft":[],"ht":[],"news":[],"transfers":[],"daily":[]}' > posted_events.json
+          fi
+
+      - name: ⚽ RUN V16 WORLDWIDE BOT
         env:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
           FB_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
-          API_URL: ${{ secrets.API_URL }}
-          API_KEY: ${{ secrets.API_KEY }}
-      - name: Save state
         run: |
-          git config user.name "bot"
-          git config user.email "bot@unfiltered.com"
+          echo "Starting bot at $(date -u) UTC"
+          python bot.py
+          echo "Bot finished at $(date -u) UTC"
+
+      - name: 💾 Save state for next run
+        if: always()
+        run: |
+          git config user.name "UnfilteredScores Bot"
+          git config user.email "bot@unfilteredscores.com"
+
           git add posted_events.json || true
-          git commit -m "update state" || true
-          git push || true
+
+          if git diff --staged --quiet; then
+            echo "No state changes - nothing to commit"
+          else
+            echo "State changed - committing"
+            git commit -m "🟢 Update state $(date -u +'%Y-%m-%d %H:%M UTC') - [skip ci]"
+            git push origin HEAD:main || {
+              echo "Push failed, trying pull --rebase"
+              git pull --rebase origin main
+              git push origin HEAD:main
+            }
+          fi
+
+      - name: 📊 Log summary
+        if: always()
+        run: |
+          echo "=== RUN SUMMARY ==="
+          echo "Time: $(date -u)"
+          echo "EAT: $(TZ='Africa/Nairobi' date)"
+          echo "State size: $(wc -
