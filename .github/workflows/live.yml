@@ -2,8 +2,8 @@ name: 🟢 Unfiltered Scores - WORLDWIDE LIVE
 
 on:
   schedule:
-    - cron: '*/4 * * * *' # Every 4 mins - covers ALL 80+ leagues fast
-  workflow_dispatch: # Manual run button
+    - cron: '*/4 * * * *'
+  workflow_dispatch:
   push:
     branches: [main]
     paths:
@@ -18,7 +18,7 @@ jobs:
       contents: write
     concurrency:
       group: unfiltered-live
-      cancel-in-progress: false # Never skip a goal!
+      cancel-in-progress: false
 
     steps:
       - name: 📥 Checkout code
@@ -63,16 +63,12 @@ jobs:
         run: |
           git config user.name "UnfilteredScores Bot"
           git config user.email "bot@unfilteredscores.com"
-
           git add posted_events.json || true
-
           if git diff --staged --quiet; then
-            echo "No state changes - nothing to commit"
+            echo "No state changes"
           else
-            echo "State changed - committing"
             git commit -m "🟢 Update state $(date -u +'%Y-%m-%d %H:%M UTC') - [skip ci]"
             git push origin HEAD:main || {
-              echo "Push failed, trying pull --rebase"
               git pull --rebase origin main
               git push origin HEAD:main
             }
@@ -83,5 +79,7 @@ jobs:
         run: |
           echo "=== RUN SUMMARY ==="
           echo "Time: $(date -u)"
-          echo "EAT: $(TZ='Africa/Nairobi' date)"
-          echo "State size: $(wc -
+          EAT_TIME=$(TZ=Africa/Nairobi date)
+          echo "EAT: $EAT_TIME"
+          echo "State size: $(wc -c < posted_events.json) bytes"
+          cat posted_events.json
