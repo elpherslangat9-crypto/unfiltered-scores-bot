@@ -1,4 +1,4 @@
-import os, requests, json, time, re, html
+import os, requests, json, time
 from datetime import datetime, timezone
 
 BRAND = "🟢"
@@ -15,7 +15,6 @@ ALL_LEAGUES = [
     "caf.champions", "rsa.1", "egy.1", "sau.1"
 ]
 
-# BREAKING KEYWORDS - same as MatchCorner uses from FTotal
 BREAKING_KEYWORDS = [
     "suspended", "abandoned", "postponed", "interrupted", "paused", "delayed",
     "fans throwing", "paper objects", "pitch invasion", "fans on pitch",
@@ -37,12 +36,23 @@ def fb_post(msg):
         print(f"FB {r.status_code}: {r.text[:400]}")
         return r.status_code == 200
     except Exception as e:
-        print(f"FB EXC {e}"); return False
+        print(f"FB EXC {e}")
+        return False
 
 def load_state():
     try:
         if os.path.exists(STATE_FILE):
-            with open(STATE_FILE,'r') as f: return json.load(f)
+            with open(STATE_FILE,'r') as f:
+                s = json.load(f)
+                s.setdefault("events",[])
+                s.setdefault("lineups",[])
+                s.setdefault("ft",[])
+                s.setdefault("ht",[])
+                s.setdefault("news",[])
+                s.setdefault("transfers",[])
+                s.setdefault("daily",[])
+                s.setdefault("breaking",[])
+                return s
     except: pass
     return {"events":[],"lineups":[],"ft":[],"ht":[],"news":[],"transfers":[],"daily":[],"breaking":[]}
 
@@ -71,19 +81,16 @@ def get_scorer_name(d):
     return name.strip() or "Goal"
 
 def check_breaking_incident(eid, league_code, home, away, league_name):
-    """NEW LAYER - Scans commentary for incidents like Vallecano case"""
     try:
         summary = espn_get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_code}/summary?event={eid}")
-        # Check commentary
         commentary = summary.get("commentary",[]) + summary.get("keyEvents",[])
-        for c in commentary[-8:]: # last 8 events
+        for c in commentary[-8:]:
             text = (c.get('text','') + " " + c.get('type',{}).get('text','')).lower()
             for kw in BREAKING_KEYWORDS:
                 if kw.lower() in text:
                     clean_text = c.get('text','') or c.get('type',{}).get('text','')
                     clock = c.get('clock',{}).get('displayValue','') or c.get('time',{}).get('displayValue','')
                     return f"{clean_text} {clock}'".strip()
-        # Check situation text
         situation = summary.get("header",{}).get("competitions",[{}])[0].get("situation",{}).get("description","")
         if situation:
             low = situation.lower()
@@ -98,7 +105,7 @@ def main():
     now=datetime.now(timezone.utc)
     today=now.strftime("%Y%m%d")
     hour_eat=(now.hour+3)%24
-    print(f"V19 BREAKING LAYER - {today} EAT:{hour_eat}h")
+    print(f"V19.1 FIXED - {today} EAT:{hour_eat}h StateKeys:{list(state.keys())}")
 
     live_found=0
     all_games=[]
@@ -135,7 +142,6 @@ def main():
             if status_state=="pre":
                 all_games.append(f"{home} vs {away} | {league_name} | {ko_eat} EAT")
 
-            # LINEUPS ONE ROW
             if 5 <= mins_to_ko <= 75 and eid not in state["lineups"]:
                 summary=espn_get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_code}/summary?event={eid}")
                 rosters=summary.get("rosters",[])
@@ -150,15 +156,13 @@ def main():
                     if fb_post(msg):
                         state["lineups"].append(eid); save_state(state); return
 
-            # LIVE + BREAKING LAYER
             if status_state=="in":
                 live_found+=1
 
-                # ===== NEW: BREAKING INCIDENTS CHECK =====
                 if eid not in state["breaking"]:
                     incident_text = check_breaking_incident(eid, league_code, home, away, league_name)
                     if incident_text:
-                        msg = f" {bold('BREAKING:')} {home} vs {away} - {incident_text}\n\n{home} {hg} - {ag} {away}\n🏆 {league_name}\n\nSource: Live Commentary\n\n{TAGLINE} {BRAND}\n{HASHTAGS} #BreakingNews"
+                        msg = f"🚩 {bold('BREAKING:')} {home} vs {away} - {incident_text}\n\n{home} {hg} - {ag} {away}\n🏆 {league_name}\n\nSource: Live Commentary\n\n{TAGLINE} {BRAND}\n{HASHTAGS} #BreakingNews"
                         if fb_post(msg):
                             state["breaking"].append(eid); save_state(state); return
 
@@ -207,7 +211,7 @@ def main():
             if fb_post(msg):
                 state["daily"].append(f"daily-{today}"); save_state(state); return
 
-    print(f"V19 Done Live:{live_found} Pre:{len(all_games)}")
+    print(f"V19.1 Done Live:{live_found} Pre:{len(all_games)}")
     save_state(state)
 
 if __name__=="__main__":
