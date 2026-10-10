@@ -1,42 +1,43 @@
-name: Daily Football Roundup
+name: 🟢 Live 1-Minute - 12 Leagues
 
 on:
   schedule:
-    # 7am EAT = 4am UTC
-    - cron: '0 4 * * *'
-    # 11pm EAT = 20pm UTC  
-    - cron: '0 20 * * *'
+    - cron: '*/5 * * * *'  # GitHub starts job every 5 mins
   workflow_dispatch:
 
 jobs:
-  daily:
+  live:
     runs-on: ubuntu-latest
+    timeout-minutes: 6
     steps:
       - uses: actions/checkout@v4
-
-      - name: Restore posted state
-        uses: actions/cache/restore@v4
-        with:
-          path: posted_events.json
-          key: posted-events-daily-${{ github.run_id }}
-          restore-keys: |
-            posted-events-
-
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
       - run: pip install requests
 
-      - name: Run Daily Bot
+      - name: 🔥 Loop Every 60 Seconds For 5 Minutes
         env:
-          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
-          FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
-        run: python bot.py
+          PAGE_ID: ${{ secrets.PAGE_ID }}
+          PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
+        run: |
+          for i in 1 2 3 4 5
+          do
+            echo "🟢 Run $i/5 - $(date)"
+            python bot.py
+            git config user.name "bot"
+            git config user.email "bot@bot.com"
+            git add posted_state.json || true
+            git commit -m "state $i" || true
+            git push || true
+            if [ $i -lt 5 ]; then
+              echo "Sleeping 60 sec..."
+              sleep 60
+            fi
+          done
 
-      - name: Save posted state
-        uses: actions/cache/save@v4
-        if: always()
+      - name: Final push
+        uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          path: posted_events.json
-          key: posted-events-daily-${{ github.run_id }}
+          commit_message: "🟢 state final"
+          file_pattern: 'posted_state.json'
