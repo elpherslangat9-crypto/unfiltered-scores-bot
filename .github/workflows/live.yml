@@ -8,7 +8,6 @@ on:
     branches: [main]
     paths:
       - 'bot.py'
-      - '.github/workflows/live.yml'
 
 jobs:
   live-scores:
@@ -21,60 +20,44 @@ jobs:
       cancel-in-progress: false
 
     steps:
-      - name: 📥 Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: 🐍 Setup Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
-      - name: 📦 Install deps
+      - name: Install deps
         run: pip install requests
 
-      - name: 🔄 Restore state
+      - name: Restore state
         run: |
-          if [ -f posted_events.json ]; then
-            echo "State found"
-          else
+          if [! -f posted_events.json ]; then
             echo '{"events":[],"lineups":[],"ft":[],"ht":[],"news":[],"transfers":[],"daily":[]}' > posted_events.json
-            echo "Created fresh state"
           fi
 
-      - name: ⚽ RUN V16 WORLDWIDE BOT
+      - name: RUN V16 WORLDWIDE BOT
         env:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
           FB_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
         run: python bot.py
 
-      - name: 💾 Save state
+      - name: Save state
         if: always()
         run: |
           git config user.name "UnfilteredScores Bot"
           git config user.email "bot@unfilteredscores.com"
-          if [ -f posted_events.json ]; then
-            git add posted_events.json
-            if! git diff --staged --quiet; then
-              git commit -m "🟢 Update state [skip ci]"
-              git pull --rebase origin main || true
-              git push origin HEAD:main || true
-            fi
+          git add posted_events.json || true
+          if! git diff --staged --quiet; then
+            git commit -m "Update state [skip ci]"
+            git push || (git pull --rebase && git push)
           fi
 
-      - name: 📊 Log summary
+      - name: Log summary
         if: always()
         run: |
           echo "=== RUN SUMMARY ==="
           date -u
-          TZ=Africa/Nairobi date
-          if [ -f posted_events.json ]; then
-            echo "State OK: $(wc -c < posted_events.json) bytes"
-            head -20 posted_events.json
-          else
-            echo "No state file yet - bot will create on next successful run"
-          fi
+          ls -lh posted_events.json || echo "no state"
