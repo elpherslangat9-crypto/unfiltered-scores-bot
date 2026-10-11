@@ -10,7 +10,8 @@
     "401874776": true,
     "401876443": true,
     "401884774": true,
-    "401882847": true
+    "401882847": true,
+    "401875584": true
   },
   "ft": {
     "401882854": true,
@@ -22,12 +23,14 @@
     "401878774": true,
     "401874951": true,
     "401874776": true,
-    "401876443": true
+    "401876443": true,
+    "401884774": true
   },
   "red": {
     "401874940_red_53470291_Donyell Malen (Roma)": true,
     "401874951_red_53480108_Lorenzo Lucchesi (Mo": true,
-    "401875585_red_53474216_Milan Hokke (ADO Den": true
+    "401875585_red_53474216_Milan Hokke (ADO Den": true,
+    "401875584_red_53489793_Goal! Excelsior 1, G": true
   },
   "goals": {
     "401875584_goal__398.0_": true,
@@ -43,7 +46,8 @@
   "daily_date": "2026-10-11",
   "kickoff": {
     "401875584": true,
-    "401884774": true
+    "401884774": true,
+    "401884778": true
   },
   "cards": {},
   "news_ids": {
