@@ -157,14 +157,12 @@ def main():
 
         # 2 KICKOFF - NEW!
         if status_name == "STATUS_IN_PROGRESS" and ev_id not in state["kickoff"]:
-            # If match just started (score 0-0 and early minutes)
             if "1'" in short_detail or "2'" in short_detail or "0'" in short_detail or "First Half" in status_detail:
                 msg = f"🟢 KICK OFF! - {comp_name}\n\n{h_team} vs {a_team}\n\n⚽ Game Started!\n{status_detail}\n\nLive updates here 🟢\n#UnfilteredScores"
                 if fb_post(msg):
                     state["kickoff"][ev_id]=True
                     posted+=1
             elif ev_id not in state["kickoff"] and ev_id in state["lineups"]:
-                # Fallback: if we had lineups, post kickoff even if minute missing
                 msg = f"🟢 KICK OFF! - {comp_name}\n\n{h_team} 0 - 0 {a_team}\n\n⚽ LIVE NOW!\nUNFILTERED SCORES 🟢"
                 if fb_post(msg):
                     state["kickoff"][ev_id]=True
