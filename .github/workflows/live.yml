@@ -1,10 +1,8 @@
-name: 🟢 Live 1-Minute Fixed
-
+name: Live 1-Minute Fixed
 on:
   schedule:
     - cron: '*/5 * * * *'
   workflow_dispatch:
-
 jobs:
   live:
     runs-on: ubuntu-latest
@@ -17,12 +15,10 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
-
       - name: Run Bot
         run: python bot.py
-
       - name: Save State
         uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "🟢 state"
+          commit_message: "state"
           file_pattern: 'posted_state.json'
