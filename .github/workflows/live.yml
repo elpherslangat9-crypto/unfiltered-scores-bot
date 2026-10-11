@@ -1,24 +1,35 @@
-name: Live 1-Minute Fixed
+name: Live Scores Bot
+
 on:
   schedule:
-    - cron: '*/5 * * * *'
-  workflow_dispatch:
+    - cron: '*/5 * * * *'   # every 5 mins
+  workflow_dispatch:        # manual run button
+
 jobs:
-  live:
+  run-bot:
     runs-on: ubuntu-latest
-    env:
-      PAGE_ID: ${{ secrets.PAGE_ID }}
-      PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install requests
-      - name: Run Bot
+
+      - name: Install deps
+        run: pip install requests
+
+      - name: Run bot
+        env:
+          PAGE_ID: ${{ secrets.PAGE_ID }}
+          PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
         run: python bot.py
-      - name: Save State
-        uses: stefanzweifel/git-auto-commit-action@v5
-        with:
-          commit_message: "state"
-          file_pattern: 'posted_state.json'
+
+      - name: Commit state file
+        run: |
+          git config --global user.name "bot"
+          git config --global user.email "bot@bot.com"
+          git add posted_state.json
+          git commit -m "update state" || echo "no changes"
+          git push
