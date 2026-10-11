@@ -11,9 +11,23 @@
     "401876443": true,
     "401884774": true
   },
-  "ft": {},
-  "red": {},
+  "ft": {
+    "401882854": true,
+    "401874940": true,
+    "401875587": true,
+    "401875586": true,
+    "401875585": true
+  },
+  "red": {
+    "401874940_red_53470291_Donyell Malen (Roma)": true,
+    "401874951_red_53480108_Lorenzo Lucchesi (Mo": true,
+    "401875585_red_53474216_Milan Hokke (ADO Den": true
+  },
   "goals": {},
   "transfers": [],
-  "daily_date": "2026-10-11"
+  "daily_date": "2026-10-11",
+  "kickoff": {},
+  "cards": {},
+  "news_ids": {},
+  "last_news": ""
 }
