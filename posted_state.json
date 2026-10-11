@@ -9,7 +9,8 @@
     "401874951": true,
     "401874776": true,
     "401876443": true,
-    "401884774": true
+    "401884774": true,
+    "401882847": true
   },
   "ft": {
     "401882854": true,
@@ -30,12 +31,19 @@
   },
   "goals": {
     "401875584_goal__398.0_": true,
-    "401875584_goal_53488006_398.0_Goal! Excelsior 0, G": true
+    "401875584_goal_53488006_398.0_Goal! Excelsior 0, G": true,
+    "401884774_goal__1503.0_": true,
+    "401884774_goal__2288.0_": true,
+    "401884774_goal__3962.0_": true,
+    "401884774_goal_53482246_1503.0_Goal! FC Cologne 1, ": true,
+    "401884774_goal_53483069_2288.0_Goal! FC Cologne 1, ": true,
+    "401884774_goal_53488880_3962.0_Goal! FC Cologne 2, ": true
   },
   "transfers": [],
   "daily_date": "2026-10-11",
   "kickoff": {
-    "401875584": true
+    "401875584": true,
+    "401884774": true
   },
   "cards": {},
   "news_ids": {
