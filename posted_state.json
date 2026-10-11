@@ -28,6 +28,8 @@
   "daily_date": "2026-10-11",
   "kickoff": {},
   "cards": {},
-  "news_ids": {},
-  "last_news": ""
+  "news_ids": {
+    "50155580": true
+  },
+  "last_news": "2026-10-11T17:47:23.523250+03:00"
 }
