@@ -30,7 +30,9 @@
     "401874940_red_53470291_Donyell Malen (Roma)": true,
     "401874951_red_53480108_Lorenzo Lucchesi (Mo": true,
     "401875585_red_53474216_Milan Hokke (ADO Den": true,
-    "401875584_red_53489793_Goal! Excelsior 1, G": true
+    "401875584_red_53489793_Goal! Excelsior 1, G": true,
+    "401882847_red_53491373_Pablo Mar\u00edn (Real So": true,
+    "401882847_red_53491408_Goal! Real Sociedad ": true
   },
   "goals": {
     "401875584_goal__398.0_": true,
@@ -40,14 +42,19 @@
     "401884774_goal__3962.0_": true,
     "401884774_goal_53482246_1503.0_Goal! FC Cologne 1, ": true,
     "401884774_goal_53483069_2288.0_Goal! FC Cologne 1, ": true,
-    "401884774_goal_53488880_3962.0_Goal! FC Cologne 2, ": true
+    "401884774_goal_53488880_3962.0_Goal! FC Cologne 2, ": true,
+    "401875584_goal__2108.0_": true,
+    "401875584_goal__2245.0_": true,
+    "401875584_goal_53489793_2108.0_Goal! Excelsior 1, G": true,
+    "401875584_goal_53489961_2245.0_Own Goal by Stijn va": true
   },
   "transfers": [],
   "daily_date": "2026-10-11",
   "kickoff": {
     "401875584": true,
     "401884774": true,
-    "401884778": true
+    "401884778": true,
+    "401879264": true
   },
   "cards": {},
   "news_ids": {
