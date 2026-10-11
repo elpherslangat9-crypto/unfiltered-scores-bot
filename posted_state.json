@@ -12,7 +12,9 @@
     "401884774": true,
     "401882847": true,
     "401875584": true,
-    "401876441": true
+    "401876441": true,
+    "401879264": true,
+    "401884778": true
   },
   "ft": {
     "401882854": true,
@@ -25,7 +27,8 @@
     "401874951": true,
     "401874776": true,
     "401876443": true,
-    "401884774": true
+    "401884774": true,
+    "401882847": true
   },
   "red": {
     "401874940_red_53470291_Donyell Malen (Roma)": true,
@@ -33,7 +36,9 @@
     "401875585_red_53474216_Milan Hokke (ADO Den": true,
     "401875584_red_53489793_Goal! Excelsior 1, G": true,
     "401882847_red_53491373_Pablo Mar\u00edn (Real So": true,
-    "401882847_red_53491408_Goal! Real Sociedad ": true
+    "401882847_red_53491408_Goal! Real Sociedad ": true,
+    "401882847_red_53493673_Lorenzo Amatucci (De": true,
+    "401875584_red_53493670_Goal! Excelsior 1, G": true
   },
   "goals": {
     "401875584_goal__398.0_": true,
@@ -47,7 +52,11 @@
     "401875584_goal__2108.0_": true,
     "401875584_goal__2245.0_": true,
     "401875584_goal_53489793_2108.0_Goal! Excelsior 1, G": true,
-    "401875584_goal_53489961_2245.0_Own Goal by Stijn va": true
+    "401875584_goal_53489961_2245.0_Own Goal by Stijn va": true,
+    "401875584_goal__3805.0_": true,
+    "401875584_goal__3984.0_": true,
+    "401875584_goal_53493670_3805.0_Goal! Excelsior 1, G": true,
+    "401875584_goal_53494013_3984.0_Goal! Excelsior 1, G": true
   },
   "transfers": [],
   "daily_date": "2026-10-11",
@@ -55,7 +64,8 @@
     "401875584": true,
     "401884774": true,
     "401884778": true,
-    "401879264": true
+    "401879264": true,
+    "401874789": true
   },
   "cards": {},
   "news_ids": {
