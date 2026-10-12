@@ -1,5 +1,5 @@
-# bot.py V32 - REAL NEWS + REAL PERSON FACE + 4 PER HOUR + GOALS + BRAND 🟢
-import os, json, requests, re, textwrap, xml.etree.ElementTree as ET, random
+# bot.py V33 - CLEAN IMAGE (top only) + 10 SEC GOAL + 4 NEWS/HR + BRAND 🟢
+import os, json, requests, re, textwrap, xml.etree.ElementTree as ET, random, time
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
@@ -15,7 +15,6 @@ NAMES={"eng.1":"Premier League","esp.1":"La Liga","uefa.champions":"UCL","ken.1"
 PRIORITY=["eng.1","esp.1","uefa.champions","ken.1"]
 BIG_BG={"real madrid":(255,255,255),"barcelona":(20,20,120),"manchester city":(108,171,223),"arsenal":(239,1,7),"liverpool":(200,16,46),"chelsea":(3,70,148),"man utd":(218,0,0),"bayern":(220,5,45),"psg":(0,38,84)}
 
-# --- STATE FIXED - NEVER KeyError ---
 def load_state():
     default={"lineup":{},"goals":{},"ht":{},"ft":{},"last":{},"news":[],"last_news_time":0}
     try:
@@ -59,14 +58,12 @@ def get_real_scorer_photo(player_name, espn_id=None):
     except: pass
     return None
 
-# --- NEWS SOURCES - ALL WITH REAL IMAGES ---
 RSS_FEEDS=[
     "https://feeds.bbci.co.uk/sport/football/rss.xml",
     "https://www.skysports.com/rss/0,20514,11095,00.xml",
     "https://www.goal.com/feeds/en/news",
     "https://e00-marca.uecdn.es/rss/futbol/en.xml",
 ]
-
 def fetch_rss_news():
     news=[]
     for rss in RSS_FEEDS:
@@ -90,7 +87,6 @@ def fetch_rss_news():
                     news.append({"title":title.strip(),"link":link,"img":img,"desc":re.sub('<[^<]+?>','',desc)[:200]})
         except: continue
     return news
-
 def fetch_espn_news():
     news=[]
     try:
@@ -105,56 +101,32 @@ def fetch_espn_news():
     except: pass
     return news
 
-# Extract person who spoke
 KNOWN_NAMES=["Saka","Arteta","Haaland","Guardiola","Mbappe","Vinicius","Bellingham","Salah","Klopp","Ancelotti","Messi","Ronaldo","Rashford","Odegaard","Palmer","Foden","Kane","Lewandowski","Yamal","Pedri"]
 def extract_speaker(title):
     t=title.lower()
     for n in KNOWN_NAMES:
         if n.lower() in t: return n
-    m=re.match(r"^([A-Z][a-z]+)", title)
-    if m: return m.group(1)
     return None
 
+# === FIXED CLEAN NEWS IMAGE - ONLY TOP 🟢 NO BLACK, NO BOTTOM ===
 def make_news_img(real_img, speaker_face, title):
     W,H=1080,1350
-    bg=Image.new("RGB",(W,H),(12,12,12))
-    # Article real image top 70%
     try:
-        art=real_img.resize((W, 900))
-        bg.paste(art,(0,0))
-    except: pass
-    # Speaker face circle bottom right if found
-    if speaker_face:
-        try:
-            sf=speaker_face.resize((280,280))
-            # circle mask
-            mask=Image.new("L",(280,280),0)
-            md=ImageDraw.Draw(mask); md.ellipse([0,0,280,280], fill=255)
-            bg.paste(sf,(750,700),mask)
-            d0=ImageDraw.Draw(bg); d0.ellipse([750,700,1030,980], outline=(0,255,100), width=8)
-        except: pass
-
+        rw, rh = real_img.size
+        # Crop 18% bottom to remove "MERSON SAYS" banner
+        crop_h = int(rh * 0.82)
+        real_img = real_img.crop((0, 0, rw, crop_h))
+        bg = real_img.resize((W, H))
+    except:
+        bg = real_img.resize((W, H))
     d=ImageDraw.Draw(bg)
-    try:
-        fb=ImageFont.truetype("DejaVuSans-Bold.ttf",40)
-        fs=ImageFont.truetype("DejaVuSans-Bold.ttf",32)
-    except: fb=fs=ImageFont.load_default()
-
-    # Title box with brand 🟢
-    d.rounded_rectangle([0,900,W,1350], radius=0, fill=(0,0,0))
-    d.rounded_rectangle([20,20,W-20,80], radius=15, fill=(0,255,100))
-    d.text((40,30), "Unfiltered Scores 🟢 • BREAKING", font=fs, fill=(0,0,0))
-
-    wrapped=textwrap.wrap(title, 36)[:4]
-    y=930
-    for line in wrapped:
-        d.text((30,y), line, font=fb, fill=(255,255,255)); y+=48
-
-    d.rounded_rectangle([20,1260,W-20,1330], radius=15, fill=(0,255,100))
-    d.text((40,1270), "Unfiltered Scores 🟢", font=fs, fill=(0,0,0))
-
+    try: fs=ImageFont.truetype("DejaVuSans-Bold.ttf",34)
+    except: fs=ImageFont.load_default()
+    # ONLY TOP - Unfiltered Scores 🟢 • BREAKING
+    d.rounded_rectangle([15,15,W-15,75], radius=18, fill=(0,255,100))
+    d.text((35,25), "Unfiltered Scores 🟢 • BREAKING", font=fs, fill=(0,0,0))
     path="/tmp/news.png"
-    bg.save(path)
+    bg.save(path, quality=95)
     return path
 
 def post(msg, path):
@@ -166,7 +138,6 @@ def post(msg, path):
         return r.status_code==200
     except Exception as e: print(e); return False
 
-# --- SCORES PART (same as V30) ---
 def get_bg(name):
     nl=name.lower()
     for k,v in BIG_BG.items():
@@ -212,22 +183,16 @@ def get_sum(args):
         return {"d":det}
     except: return {"d":[]}
 
-def main():
-    st=load_state()
-    now=datetime.now(EAT)
-    # ---- LIVE SCORES ----
+def run_once(st):
     all_ev=[]
     with ThreadPoolExecutor(max_workers=4) as ex:
         for lst in ex.map(get_sb, PRIORITY): all_ev.extend(lst)
     live=[e for e in all_ev if e["competitions"][0]["status"]["type"]["name"] in ["STATUS_IN_PROGRESS","STATUS_HALFTIME"]]
     if not live: live=all_ev[:12]
-    print(f"V32 LIVE:{len(live)}")
-
     sums={}
     with ThreadPoolExecutor(max_workers=10) as ex:
         ids=[(e["id"], e["_code"]) for e in live]
         for e,s in zip(live, ex.map(get_sum, ids)): sums[e["id"]]=s
-
     posted=0
     for ev in live:
         ev_id=ev["id"]; comp=ev["competitions"][0]; status=comp["status"]["type"]["name"]; short=comp["status"]["type"].get("shortDetail","")
@@ -251,10 +216,22 @@ def main():
                     if post(f"⚽ GOAL! {minute}' 🟢 {pname}\n\n{lg}\n{hn} {hs} - {as_} {an}\n\n{scorer_txt}\n\nUnfiltered Scores 🟢 LIVE\n#UnfilteredScores 🟢", img):
                         st.setdefault("goals",{})[gid]=1; posted+=1
         st.setdefault("last",{})[ev_id]=f"{hs}-{as_}"
+    return posted, live
 
-    # ---- FOOTBALL NEWS 3-4 PER HOUR WITH REAL IMAGE + SPEAKER FACE ----
+def main():
+    st=load_state()
+    total_posted=0
+    # === 10 SECOND GOAL CHECK - 6x in 1 minute ===
+    for loop in range(6):
+        print(f"LOOP {loop+1}/6 - 10sec check")
+        posted, live = run_once(st)
+        total_posted+=posted
+        save_state(st)
+        if loop<5: time.sleep(10)
+
+    # === NEWS - 1 per 15 min = 4 per hour - only once per run ===
     last_t=st.get("last_news_time",0)
-    if (datetime.now().timestamp() - last_t) > 900: # 15 min = 4 per hour
+    if (datetime.now().timestamp() - last_t) > 900:
         all_news=fetch_espn_news() + fetch_rss_news()
         random.shuffle(all_news)
         for n in all_news[:8]:
@@ -266,15 +243,14 @@ def main():
             if not real_img: continue
             speaker_face=get_real_scorer_photo(speaker) if speaker else None
             img_path=make_news_img(real_img, speaker_face, n["title"])
-            caption=f"{n['title']}\n\n{n['desc']}\n\n🗣️ {speaker} speaks\n\nSource: {n['link']}\n\nUnfiltered Scores 🟢\n#UnfilteredScores 🟢 #FootballNews"
+            caption=f"{n['title']}\n\n{n['desc']}\n\n🗣️ {speaker if speaker else 'Breaking'} speaks\n\nSource: {n['link']}\n\nUnfiltered Scores 🟢\n#UnfilteredScores 🟢 #FootballNews"
             if post(caption, img_path):
                 st.setdefault("news",[]).append(nid)
                 if len(st["news"])>100: st["news"]=st["news"][-100:]
                 st["last_news_time"]=datetime.now().timestamp()
-                posted+=1
-                break # post only 1 news per run
-
-    print(f"V32 DONE {posted}")
+                total_posted+=1
+                break
+    print(f"V33 DONE total {total_posted}")
     save_state(st)
 
 if __name__=="__main__": main()
