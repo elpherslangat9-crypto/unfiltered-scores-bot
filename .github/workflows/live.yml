@@ -1,35 +1,29 @@
 name: Live Scores Bot
-
 on:
   schedule:
-    - cron: '*/5 * * * *'   # every 5 mins
-  workflow_dispatch:        # manual run button
-
+    - cron: '*/3 * * * *' # 3 mins = never miss a goal
+  workflow_dispatch:
 jobs:
   run-bot:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install deps
-        run: pip install requests
-
+      - run: pip install requests
       - name: Run bot
         env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
           PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
         run: python bot.py
-
-      - name: Commit state file
+      - name: Commit state
         run: |
-          git config --global user.name "bot"
-          git config --global user.email "bot@bot.com"
+          git pull --rebase || true
+          git config user.name "bot"
+          git config user.email "bot@bot.com"
           git add posted_state.json
-          git commit -m "update state" || echo "no changes"
-          git push
+          git commit -m "state $(date)" || echo "no change"
+          git push || echo "push failed"
