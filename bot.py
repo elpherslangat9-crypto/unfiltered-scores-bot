@@ -1,6 +1,6 @@
-# bot.py V36 FULL - FAST GOAL 10sec + HT SCORER REAL PHOTO + NO REPEAT + DATE/TIME + REAL STADIUM + NEWS CLEAN
-import os, json, requests, re, textwrap, xml.etree.ElementTree as ET, random, time
-from datetime import datetime, timedelta
+# bot.py V37 FULL - NO DUPLICATE NEWS + 10sec FAST + HT SCORER REAL PHOTO + NO REPEAT + REAL STADIUM
+import os, json, requests, re, xml.etree.ElementTree as ET, random, time
+from datetime import datetime
 from zoneinfo import ZoneInfo
 from PIL import Image, ImageDraw, ImageFont
 from io import BytesIO
@@ -13,7 +13,7 @@ EAT=ZoneInfo("Africa/Nairobi")
 
 NAMES={"eng.1":"Premier League","esp.1":"La Liga","uefa.champions":"UCL","ken.1":"KPL","ita.1":"Serie A","ger.1":"Bundesliga","eng.2":"Championship"}
 PRIORITY=["eng.1","eng.2","esp.1","uefa.champions","ita.1","ger.1","ken.1"]
-BIG_BG={"real madrid":(255,255,255),"barcelona":(20,20,120),"man city":(108,171,223),"arsenal":(239,1,7),"liverpool":(200,16,46),"chelsea":(3,70,148),"man utd":(218,0,0),"bayern":(220,5,45),"psg":(0,38,84),"villarreal":(255,223,0),"napoli":(0,70,160),"coventry":(0,120,180),"newcastle":(0,0,0),"levante":(100,0,150),"sevilla":(255,255,255)}
+BIG_BG={"real madrid":(255,255,255),"barcelona":(20,20,120),"man city":(108,171,223),"arsenal":(239,1,7),"liverpool":(200,16,46),"chelsea":(3,70,148),"man utd":(218,0,0),"bayern":(220,5,45),"psg":(0,38,84),"villarreal":(255,223,0),"napoli":(0,70,160),"coventry":(0,120,180),"newcastle":(0,0,0)}
 
 def load_state():
     default={"lineup":{},"goals":{},"ht":{},"ft":{},"last":{},"red":{},"news":[],"last_news_time":0,"live_posted":{}}
@@ -359,22 +359,31 @@ def main():
         total+=run_once(st)
         save_state(st)
         if i<5: time.sleep(10)
-    if (datetime.now().timestamp() - st.get("last_news_time",0)) > 900:
+
+    # NEWS FIXED - 20 MIN GAP + STRICT DEDUP
+    now_ts=datetime.now().timestamp()
+    if (now_ts - st.get("last_news_time",0)) > 1200: # 20 mins = 3 per hour, no dup
         all_news=fetch_espn_news() + fetch_rss_news()
         random.shuffle(all_news)
-        for n in all_news[:10]:
-            nid=n["title"][:60]
-            if nid in st.get("news",[]): continue
+        for n in all_news[:15]:
+            title_raw=n["title"][:80]
+            title_key=title_raw.strip().lower()
+            # strict dedup - skip if similar exists
+            existing_lowers=[x.lower() for x in st.get("news",[])]
+            if title_key in existing_lowers: continue
+            if any(title_key in ex or ex in title_key for ex in existing_lowers[-30:]): continue
+            # skip video thumbnails that cause circle image
+            if "skysports.com/watch" in n["link"]: continue
             real=dl(n["img"])
             if not real: continue
             img=make_news_img(real)
             cap=f"{n['title']}\n\n{n['desc']}\n\nSource: {n['link']}\n\nUnfiltered Scores 🟢\n#UnfilteredScores 🟢 #FootballNews"
             if post(cap, img):
-                st.setdefault("news",[]).append(nid)
-                if len(st["news"])>150: st["news"]=st["news"][-150:]
-                st["last_news_time"]=datetime.now().timestamp()
+                st.setdefault("news",[]).append(title_raw)
+                if len(st["news"])>200: st["news"]=st["news"][-200:]
+                st["last_news_time"]=now_ts
                 total+=1
                 break
-    print(f"V36 DONE {total}"); save_state(st)
+    print(f"V37 DONE {total}"); save_state(st)
 
-if __name__=="__main__": main()
+if __name__=="__main__"
