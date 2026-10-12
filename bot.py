@@ -1,5 +1,6 @@
-# V42 FINAL - 8 LEAGUES + NEWS - ALL FEATURES
+# V43 FINAL - 8 LEAGUES + MULTI SOURCE NEWS
 import os,json,requests,re,random,time
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from PIL import Image,ImageDraw,ImageFont
@@ -13,12 +14,13 @@ FILE="posted_state.json"
 EAT=ZoneInfo("Africa/Nairobi")
 
 NAMES={
- "eng.1":"Premier League","esp.1":"LaLiga","fra.1":"Ligue 1",
- "ita.1":"Serie A","ger.1":"Bundesliga","ken.1":"KPL",
- "uefa.champions":"Champions League","uefa.europa":"Europa League"
+ "eng.1":"Premier League","esp.1":"LaLiga",
+ "fra.1":"Ligue 1","ita.1":"Serie A",
+ "ger.1":"Bundesliga","ken.1":"KPL",
+ "uefa.champions":"UCL","uefa.europa":"Europa"
 }
 PR=["eng.1","esp.1","fra.1","ita.1","ger.1","ken.1","uefa.champions","uefa.europa"]
-BIG={"real madrid":(255,255,255),"barcelona":(20,20,120),"man city":(108,171,223),"arsenal":(239,1,7)}
+BIG={"real madrid":(255,255,255),"barcelona":(20,20,120),"man city":(108,171,223)}
 
 def load():
  d={"lineup":{},"goals":{},"ht":{},"ft":{},"last":{},"red":{},"kick":{},"news":[],"last_news_time":0}
@@ -34,7 +36,7 @@ def save(s):
 def dl(u):
  try:
   r=requests.get(u,timeout=8,headers={"User-Agent":"Mozilla/5.0"})
-  if r.status_code==200 and len(r.content)>4000:
+  if r.status_code==200 and len(r.content)>3000:
    return Image.open(BytesIO(r.content)).convert("RGBA")
  except: return None
 
@@ -97,6 +99,8 @@ def src_name(link):
   if "skysports" in d: return "Sky Sports"
   if "bbc" in d: return "BBC Sport"
   if "espn" in d: return "ESPN"
+  if "goal" in d: return "Goal.com"
+  if "guardian" in d: return "Guardian"
   return d.replace("www.","").split(".")[0].capitalize()
  except: return "Football News"
 
@@ -155,7 +159,7 @@ def mk_news_img(real):
  d=ImageDraw.Draw(bg,"RGBA")
  try: fs=ImageFont.truetype("DejaVuSans-Bold.ttf",36)
  except: fs=ImageFont.load_default()
- d.rounded_rectangle([15,15,W-15,80],radius=20,fill=(0,255,100)); d.text((35,28),"Unfiltered Scores - BREAKING",font=fs,fill=(0,0,0))
+ d.rounded_rectangle([15,15,W-15,80],radius=20,fill=(0,255,100)); d.text((35,28),"Unfiltered - BREAKING",font=fs,fill=(0,0,0))
  p="/tmp/news.png"; bg.save(p,quality=100); return p
 
 def get_sb(lg):
@@ -191,12 +195,46 @@ def lineup_txt(lins):
 
 def fetch_news():
  news=[]
+ # S1 ESPN
  try:
   j=requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/news",timeout=6).json()
   for a in j.get("articles",[])[:10]:
    ttl=a.get("headline",""); lnk=a.get("links",{}).get("web",{}).get("href",""); ims=a.get("images",[]); img=ims[0].get("url") if ims else None
-   if ttl and img: news.append({"title":ttl,"link":lnk,"img":img,"desc":a.get("description","")[:200]})
+   if ttl and img: news.append({"title":ttl,"link":lnk,"img":img,"desc":a.get("description","")[:200],"source":"ESPN"})
  except: pass
+ # S2 Sky Sports RSS
+ try:
+  r=requests.get("https://www.skysports.com/rss/12040",timeout=6)
+  root=ET.fromstring(r.content)
+  for item in root.findall(".//item")[:8]:
+   ttl=item.findtext("title",""); lnk=item.findtext("link",""); desc=item.findtext("description","")[:200]
+   if ttl:
+    img="https://e0.365dm.com/24/08/768x432/skysports-football_6650543.jpg"
+    news.append({"title":ttl,"link":lnk,"img":img,"desc":desc,"source":"Sky Sports"})
+ except: pass
+ # S3 BBC
+ try:
+  r=requests.get("http://feeds.bbci.co.uk/sport/football/rss.xml",timeout=6)
+  root=ET.fromstring(r.content)
+  for item in root.findall(".//item")[:8]:
+   ttl=item.findtext("title",""); lnk=item.findtext("link",""); desc=item.findtext("description","")[:200]
+   thumb=None
+   m=item.find("{http://search.yahoo.com/mrss/}thumbnail")
+   if m is not None: thumb=m.get("url")
+   if not thumb: thumb="https://ichef.bbci.co.uk/ace/standard/480/cpsprodpb/vivo/live/images/2024/8/15/1.jpg"
+   if ttl: news.append({"title":ttl,"link":lnk,"img":thumb,"desc":desc,"source":"BBC Sport"})
+ except: pass
+ # S4 Goal
+ try:
+  r=requests.get("https://www.goal.com/en/feeds/news?fmt=rss",timeout=6)
+  root=ET.fromstring(r.content)
+  for item in root.findall(".//item")[:8]:
+   ttl=item.findtext("title",""); lnk=item.findtext("link",""); desc=item.findtext("description","")[:200]
+   enc=item.find("enclosure")
+   img=enc.get("url") if enc is not None else "https://assets.goal.com/v3/assets/images/football.jpg"
+   if ttl: news.append({"title":ttl,"link":lnk,"img":img,"desc":desc,"source":"Goal.com"})
+ except: pass
+ print(f"NEWS FOUND {len(news)} from 4 sources")
  return news
 
 def run_once(st):
@@ -282,24 +320,25 @@ def run_once(st):
 def main():
  st=load(); tot=0
  for i in range(6):
-  tot+=run_once(st); save(st)
+  print(f"loop {i+1}/6"); tot+=run_once(st); save(st)
   if i<5: time.sleep(10)
- # NEWS - AS DISCUSSED - CLEAR HD + SOURCE ONLY + 20 MIN GAP
+ # MULTI SOURCE BREAKING NEWS - CHECKS 4 SOURCES
  now=datetime.now().timestamp()
  if (now - st.get("last_news_time",0))>1200:
   news=fetch_news(); random.shuffle(news)
-  for n in news[:10]:
+  for n in news[:15]:
    ttl=n["title"][:80]
    if ttl.lower() in [x.lower() for x in st.get("news",[])]:
     continue
+   if len(ttl)<15: continue
    real=dl(n["img"])
    if not real: continue
    img=mk_news_img(real)
-   src=src_name(n["link"])
-   cap=f"{n['title']}\n\n{n['desc']}\n\nSource: {src}\n\nUnfiltered Scores\n#UnfilteredScores"
+   src=n.get("source") or src_name(n["link"])
+   cap=f"BREAKING: {n['title']}\n\n{n['desc']}\n\nSource: {src}\n\nUnfiltered Scores"
    if post(cap,img):
-    st.setdefault("news",[]).append(ttl); st["last_news_time"]=now; tot+=1; break
- print(f"V42 DONE {tot}"); save(st)
+    st.setdefault("news",[]).append(ttl); st["last_news_time"]=now; tot+=1; print(f"NEWS {src}"); break
+ print(f"V43 DONE {tot}"); save(st)
 
 if __name__=="__main__":
  main()
