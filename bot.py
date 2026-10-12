@@ -493,12 +493,12 @@ def run_once(st):
                 gid=f"{ev_id}_{hs}-{as_}"
                 if gid not in st.get("goals",{}):
                     scorer_txt,pid,pname="",None,""
-                    for d in details[-6:]:
+                                        for d in details[-6:]:
                         if "goal" in str(d.get("type","")).lower() or "Goal" in str(d.get("text","")):
-                        scorer_txt=d.get("text","")
-                        pid=d.get("athlete",{}).get("id")
-                        pname=d.get("athlete",{}).get("displayName","")
-                        break
+                            scorer_txt=d.get("text","")
+                            pid=d.get("athlete",{}).get("id")
+                            pname=d.get("athlete",{}).get("displayName","")
+                            break
                 face=None
                 minute_txt=f"{minute}'"
                 is_pen=False
