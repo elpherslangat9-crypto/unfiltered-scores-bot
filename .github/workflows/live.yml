@@ -3,16 +3,23 @@ on:
   schedule:
     - cron: "* * * * *"
   workflow_dispatch:
+concurrency:
+  group: live-football
+  cancel-in-progress: false
 
 jobs:
   live:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
       - run: pip install requests pillow
+      - name: Pull latest state first
+        run: git pull --rebase || true
       - run: python bot.py
         env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
@@ -21,6 +28,7 @@ jobs:
         run: |
           git config user.name "bot"
           git config user.email "bot@bot.com"
+          git pull --rebase || true
           git add posted_state.json || true
-          git diff --staged --quiet || git commit -m "state"
+          git diff --staged --quiet || git commit -m "state $(date)"
           git push || true
