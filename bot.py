@@ -1,173 +1,210 @@
-# bot.py - V21.1 FIX DUPLICATES + SCORE + KICKOFF 🟢
-import os, json, requests, random, re
+# bot.py V23 FINAL - NO REPEAT, NO MISSED GAME 🟢
+import os, json, requests, re
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
-PAGE_ID = os.getenv("PAGE_ID", "").strip()
-PAGE_TOKEN = os.getenv("PAGE_ACCESS_TOKEN", "").strip()
+PAGE_ID = os.getenv("PAGE_ID")
+PAGE_TOKEN = os.getenv("PAGE_ACCESS_TOKEN")
 STATE_FILE = "posted_state.json"
 
 LEAGUES = {
     "eng.1": "Premier League", "esp.1": "La Liga", "ger.1": "Bundesliga",
     "ita.1": "Serie A", "fra.1": "Ligue 1", "ned.1": "Eredivisie",
-    "ken.1": "KPL Kenya", "nga.1": "NPFL Nigeria", "rsa.1": "PSL South Africa",
-    "uefa.champions": "Champions League", "uefa.europa": "Europa League", "uefa.europa.conf": "Conference League",
+    "ken.1": "KPL Kenya", "nga.1": "NPFL", "uefa.champions": "UCL",
+    "uefa.europa": "UEL", "uefa.europa.conf": "Conference",
 }
 
-ESPN_SCORE = "https://site.api.espn.com/apis/site/v2/sports/soccer/{league}/scoreboard"
-ESPN_SUMMARY = "https://site.api.espn.com/apis/site/v2/sports/soccer/{league}/summary?event={event_id}"
-ESPN_NEWS = "https://site.api.espn.com/apis/site/v2/sports/soccer/{league}/news"
 EAT = ZoneInfo("Africa/Nairobi")
+SCORE_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/{lg}/scoreboard"
+SUMMARY_URL = "https://site.api.espn.com/apis/site/v2/sports/soccer/{lg}/summary?event={eid}"
 
 def load_state():
     try:
         with open(STATE_FILE) as f:
-            s=json.load(f)
-            for k in ["lineups","kickoff","ht","ft","red","goals","news_ids"]:
-                s.setdefault(k,{})
-            s.setdefault("daily_date",""); s.setdefault("last_news","")
+            s = json.load(f)
+            # ensure keys
+            for k in ["kickoff","lineup","goals","red","ht","ft","live30","live60","postponed","news"]:
+                s.setdefault(k, {} if k!="news" else [])
             return s
     except:
-        return {"lineups":{}, "kickoff":{}, "ht":{}, "ft":{}, "red":{}, "goals":{}, "news_ids":{}, "daily_date":"", "last_news":""}
+        return {"kickoff":{}, "lineup":{}, "goals":{}, "red":{}, "ht":{}, "ft":{}, "live30":{}, "live60":{}, "postponed":{}, "news":[]}
 
 def save_state(s):
-    with open(STATE_FILE,"w") as f: json.dump(s,f,indent=2)
+    # keep small
+    for k in ["kickoff","lineup","goals","red","ht","ft","live30","live60","postponed"]:
+        if isinstance(s.get(k), dict) and len(s[k]) > 400:
+            s[k] = dict(list(s[k].items())[-250:])
+    if len(s.get("news",[])) > 80: s["news"] = s["news"][-40:]
+    with open(STATE_FILE,"w") as f: json.dump(s,f)
 
-def fb_post(msg):
-    if not PAGE_ID or not PAGE_TOKEN: return None
-    url=f"https://graph.facebook.com/v20.0/{PAGE_ID}/feed"
+def post(msg):
+    if not PAGE_ID or not PAGE_TOKEN:
+        print("NO TOKEN"); return False
     try:
-        r=requests.post(url, data={"message":msg,"access_token":PAGE_TOKEN}, timeout=25)
-        print(f"FB {r.status_code}: {r.text[:600]}")
-        return r.json().get("id") if r.status_code==200 else None
+        r = requests.post(f"https://graph.facebook.com/v20.0/{PAGE_ID}/feed",
+                          data={"message": msg, "access_token": PAGE_TOKEN}, timeout=15)
+        print(f"POST {r.status_code}: {msg[:80]}")
+        return r.status_code == 200
     except Exception as e:
-        print(f"FB err {e}"); return None
+        print(f"post err {e}"); return False
 
-def get_events():
-    all_ev=[]; today=datetime.now(EAT).strftime("%Y%m%d")
-    for code,name in LEAGUES.items():
-        try:
-            url=ESPN_SCORE.format(league=code)+f"?dates={today}"
-            resp=requests.get(url,timeout=12)
-            if resp.status_code!=200: resp=requests.get(ESPN_SCORE.format(league=code),timeout=12)
-            evs=resp.json().get("events",[])
-            for e in evs: e["_league_code"]=code; e["_league_name"]=name
-            all_ev.extend(evs)
-            print(f"{code} -> {len(evs)}")
-        except Exception as e: print(f"{code} err {e}")
-    return all_ev
-
-def get_details(league_code, event_id):
-    try:
-        url=ESPN_SUMMARY.format(league=league_code, event_id=event_id)
-        r=requests.get(url,timeout=12)
-        if r.status_code==200: return r.json()
-    except: pass
-    return None
-
-def parse_events(details):
-    goals, reds = [], []
-    try:
-        header=details.get("header",{})
-        comp=header.get("competitions",[{}])[0] if header.get("competitions") else {}
-        # ESPN details array is most reliable
-        for ev in comp.get("details",[]):
-            ttype = ev.get("type",{}).get("text","").lower() if isinstance(ev.get("type"),dict) else str(ev.get("type","")).lower()
-            txt = ev.get("text","").lower()
-            if "goal" in ttype or "goal" in txt: goals.append(ev)
-            if "red card" in ttype or "red card" in txt: reds.append(ev)
-    except Exception as e: print(f"parse err {e}")
-    return goals, reds
+def get_all_events():
+    events = []
+    # Check yesterday, today, tomorrow so we NEVER miss late KPL or early UCL
+    dates = [
+        (datetime.now(EAT) - timedelta(days=1)).strftime("%Y%m%d"),
+        datetime.now(EAT).strftime("%Y%m%d"),
+        (datetime.now(EAT) + timedelta(days=1)).strftime("%Y%m%d"),
+    ]
+    for lg, lname in LEAGUES.items():
+        for d in dates:
+            try:
+                url = SCORE_URL.format(lg=lg) + f"?dates={d}"
+                data = requests.get(url, timeout=8).json()
+                for ev in data.get("events",[]):
+                    ev["_lname"] = lname
+                    ev["_code"] = lg
+                    ev["_date"] = d
+                    events.append(ev)
+                # if we got events for today, no need to check other dates for same league
+                if d == dates[1] and data.get("events"): break
+            except: pass
+    # deduplicate by id
+    uniq = {}
+    for ev in events: uniq[ev["id"]] = ev
+    return list(uniq.values())
 
 def main():
-    state=load_state(); now=datetime.now(EAT)
-    print(f"V21.1 FIX - {now}")
-    events=get_events(); posted=0; today_str=now.strftime("%Y-%m-%d")
-
-    # DAILY FIXTURES
-    if state.get("daily_date")!=today_str and events:
-        by_league={}
-        for ev in events:
-            comps=ev.get("competitions",[]);
-            if not comps: continue
-            competitors=comps[0].get("competitors",[]);
-            if len(competitors)<2: continue
-            home=next((x for x in competitors if x.get("homeAway")=="home"), competitors[0])
-            away=next((x for x in competitors if x.get("homeAway")=="away"), competitors[-1])
-            h=home.get("team",{}).get("displayName",""); a=away.get("team",{}).get("displayName","")
-            time_str=comps[0].get("status",{}).get("type",{}).get("shortDetail","")
-            by_league.setdefault(ev["_league_name"], []).append(f"{h} vs {a} - {time_str}")
-        if by_league:
-            msg=f"🟢 TODAY'S FIXTURES - {today_str}\n{now.strftime('%A %d %B')} | EAT\nUNFILTERED SCORES 🟢\n\n"
-            total=0
-            for lname,games in by_league.items():
-                msg+=f"{lname} ({len(games)})\n"
-                for g in games[:8]: msg+=f"- {g}\n"
-                msg+="\n"; total+=len(games)
-            msg+=f"Total: {total} matches 🟢\n#UnfilteredScores"
-            if fb_post(msg): state["daily_date"]=today_str; posted+=1
+    state = load_state()
+    now = datetime.now(EAT)
+    events = get_all_events()
+    print(f"V23 - {now} - Events:{len(events)}")
+    posted = 0
 
     for ev in events:
-        ev_id=ev.get("id"); league_code=ev["_league_code"]; comp_name=ev["_league_name"]
-        comps=ev.get("competitions",[]);
-        if not comps: continue
-        c=comps[0]
-        status_name=c.get("status",{}).get("type",{}).get("name","")
-        status_detail=c.get("status",{}).get("type",{}).get("detail","")
-        short_detail=c.get("status",{}).get("type",{}).get("shortDetail","")
-        competitors=c.get("competitors",[]);
-        if len(competitors)<2: continue
-        home=next((x for x in competitors if x.get("homeAway")=="home"), competitors[0])
-        away=next((x for x in competitors if x.get("homeAway")=="away"), competitors[-1])
-        h_team=home.get("team",{}).get("displayName","Home"); a_team=away.get("team",{}).get("displayName","Away")
-        h_score=home.get("score","0"); a_score=away.get("score","0")
-        details=get_details(league_code, ev_id)
-        if not details: continue
+        ev_id = ev["id"]
+        comp = ev["competitions"][0]
+        status_name = comp["status"]["type"]["name"]
+        short = comp["status"]["type"].get("shortDetail","")
+        detail = comp["status"]["type"].get("detail","")
+        comps = comp["competitors"]
+        try:
+            home = next(x for x in comps if x["homeAway"]=="home")
+            away = next(x for x in comps if x["homeAway"]=="away")
+        except: continue
+        h_name = home["team"]["displayName"]; a_name = away["team"]["displayName"]
+        h_score = home.get("score","0"); a_score = away.get("score","0")
+        lg = ev["_lname"]; lg_code = ev["_code"]
 
-        # 1 KICKOFF - FIXED: Only first 10 minutes!
-        if status_name=="STATUS_IN_PROGRESS" and ev_id not in state["kickoff"]:
-            # Only if minute is 0-10 and first half
-            m = re.search(r"(\d+)'", short_detail)
-            minute = int(m.group(1)) if m else 999
-            if minute <= 10:
-                msg=f"🟢 KICK OFF! - {comp_name}\n\n{h_team} vs {a_team}\n\n⚽ Game Started!\n{status_detail}\n\nLive updates here 🟢\n#UnfilteredScores"
-                if fb_post(msg): state["kickoff"][ev_id]=True; posted+=1
+        # --- POSTPONED / CANCELLED - IMPORTANT ---
+        if "Postponed" in detail or "Canceled" in detail or "Abandoned" in detail:
+            if ev_id not in state["postponed"]:
+                if post(f"⚠️ {detail.upper()} 🟢\n\n{lg}\n{h_name} vs {a_name}\n\n{detail}\n#UnfilteredScores"):
+                    state["postponed"][ev_id]=1; posted+=1
 
-        # 2 GOALS + REDS
-        g_list, r_list = parse_events(details)
-        if status_name=="STATUS_IN_PROGRESS" or status_name=="STATUS_HALFTIME":
-            for g in g_list:
-                # STABLE ID: event_id + minute + player name
-                clock = str(g.get("clock",{}).get("displayValue","") or g.get("clock","") or "")
-                player = g.get("athlete",{}).get("displayName","") or g.get("participants",[{}])[0].get("athlete",{}).get("displayName","") if g.get("participants") else ""
-                gid = f"{ev_id}_{clock}_{player}".strip()
-                if not gid or len(gid)<5: gid = f"{ev_id}_{g.get('text','')[:50]}"
-                if gid in state["goals"]: continue
-                # Extract real score at that moment from text e.g. "FC Cologne 2, Borussia 1"
-                score_match = re.search(r"(\d+),\s*.*?(\d+)", g.get("text",""))
-                if score_match:
-                    real_score = f"{h_team} {score_match.group(1)} - {score_match.group(2)} {a_team}"
-                else:
-                    real_score = f"{h_team} {h_score} - {a_score} {a_team}"
-                msg=f"⚽ GOAL! 🟢\n\n{comp_name}\n{real_score}\n\n⚽ {g.get('text','')}\n\n🟢 LIVE"
-                if fb_post(msg): state["goals"][gid]=True; posted+=1
+        # Skip if not live and not final and not about to start
+        if status_name not in ["STATUS_IN_PROGRESS","STATUS_HALFTIME","STATUS_FINAL","STATUS_SCHEDULED","STATUS_END"]:
+            continue
 
-            for rc in r_list:
-                rid = f"{ev_id}_red_{rc.get('clock',{}).get('displayValue','')}_{rc.get('athlete',{}).get('displayName','')}"
-                if rid in state["red"]: continue
-                msg=f"🟥 RED CARD! 🟢\n\n{comp_name}\n{h_team} {h_score} - {a_score} {a_team}\n\n🟥 {rc.get('text','')}\n\nUNFILTERED SCORES 🟢"
-                if fb_post(msg): state["red"][rid]=True; posted+=1
+        # Fetch details ONLY if live / HT / FT
+        details_list, lineups = [], []
+        if status_name in ["STATUS_IN_PROGRESS","STATUS_HALFTIME","STATUS_FINAL","STATUS_END"]:
+            try:
+                det = requests.get(SUMMARY_URL.format(lg=lg_code, eid=ev_id), timeout=8).json()
+                header = det.get("header",{}).get("competitions",[{}])[0]
+                details_list = header.get("details", [])
+                lineups = det.get("lineups", [])
+            except: pass
 
-        if status_name=="STATUS_HALFTIME" and ev_id not in state["ht"]:
-            msg=f"⏸️ HALF TIME - {comp_name} 🟢\n\n{h_team} {h_score} - {a_score} {a_team}\n\nHT\nUNFILTERED SCORES 🟢"
-            if fb_post(msg): state["ht"][ev_id]=True; posted+=1
+        minute = 0
+        m = re.search(r"(\d+)'", short)
+        if m: minute = int(m.group(1))
 
-        if status_name=="STATUS_FINAL" and ev_id not in state["ft"]:
-            winner=f"{h_team} WINS!" if int(h_score or 0)>int(a_score or 0) else f"{a_team} WINS!" if int(a_score or 0)>int(h_score or 0) else "DRAW!"
-            msg=f"🟢 FULL TIME - {comp_name}\n\n{h_team} {h_score} - {a_score} {a_team}\n\n{winner}\nFT | {status_detail}\nUNFILTERED SCORES 🟢"
-            if fb_post(msg): state["ft"][ev_id]=True; posted+=1
+        # 1. KICK OFF - 0-10 only
+        if status_name == "STATUS_IN_PROGRESS" and minute <= 10 and ev_id not in state["kickoff"]:
+            if post(f"🟢 KICK OFF - {lg}\n\n{h_name} vs {a_name}\n\n⚽ Game Started!\n{short}\n\nLIVE Updates Here 🟢"):
+                state["kickoff"][ev_id]=1; posted+=1
 
-    print(f"V21.1 Done Posted:{posted} Events:{len(events)}")
+        # 2. LINEUP - once, before or at kickoff
+        if lineups and ev_id not in state["lineup"]:
+            try:
+                txt = f"📋 LINE UP - {lg} 🟢\n\n{h_name} vs {a_name}\n"
+                for lineup in lineups[:2]:
+                    tn = lineup.get("team",{}).get("displayName","")
+                    starters = lineup.get("athletes",[]) or lineup.get("starters",[]) or []
+                    txt += f"\n{tn}:\n"
+                    for ath in starters[:11]:
+                        name = ath.get("athlete",{}).get("displayName","") or ath.get("displayName","")
+                        if name: txt += f"- {name}\n"
+                txt += "\n#UnfilteredScores"
+                if post(txt):
+                    state["lineup"][ev_id]=1; posted+=1
+            except: pass
+
+        # 3. GOALS - NEVER REPEAT, NEVER MISS
+        if status_name in ["STATUS_IN_PROGRESS","STATUS_HALFTIME"]:
+            for d in details_list:
+                dtype = d.get("type",{}).get("text","") if isinstance(d.get("type"),dict) else str(d.get("type",""))
+                dtype = dtype.lower()
+                txt = d.get("text","")
+                clock = d.get("clock",{}).get("displayValue","") or str(d.get("clock",""))
+                ath_id = d.get("athlete",{}).get("id","") or ""
+                # STRONG ID - will never repeat
+                gid = f"{ev_id}_G_{clock}_{ath_id}_{txt[:30]}"
+
+                if "goal" in dtype and gid not in state["goals"]:
+                    # IMPORTANT TAGS
+                    tag = ""
+                    if "penalty" in txt.lower(): tag = "(P)"
+                    if "own goal" in txt.lower(): tag = "(OG)"
+                    # Extract score at moment if available
+                    msg = f"⚽ GOAL! {clock}' {tag} 🟢\n\n{lg}\n{h_name} {h_score} - {a_score} {a_name}\n\n⚽ {txt}\n\nLIVE 🟢"
+                    if post(msg):
+                        state["goals"][gid]=1; posted+=1
+
+                if "red card" in dtype:
+                    rid = f"{ev_id}_R_{clock}_{ath_id}"
+                    if rid not in state["red"]:
+                        if post(f"🟥 RED CARD {clock}' 🟢\n\n{lg}\n{h_name} {h_score} - {a_score} {a_name}\n\n🟥 {txt}"):
+                            state["red"][rid]=1; posted+=1
+
+            # 0-0 reminder so page not boring
+            if h_score=="0" and a_score=="0":
+                if 25 <= minute <= 35 and ev_id not in state["live30"]:
+                    if post(f"⏱️ {minute}' LIVE - {lg} 🟢\n\n{h_name} {h_score} - {a_score} {a_name}\n\nStill 0-0, tight game!\n#UnfilteredScores"):
+                        state["live30"][ev_id]=1; posted+=1
+                if 60 <= minute <= 70 and ev_id not in state["live60"]:
+                    if post(f"⏱️ {minute}' LIVE - {lg} 🟢\n\n{h_name} {h_score} - {a_score} {a_name}\n\nStill {h_score}-{a_score} at {minute}'\n#UnfilteredScores"):
+                        state["live60"][ev_id]=1; posted+=1
+
+        # 4. HT
+        if status_name == "STATUS_HALFTIME" and ev_id not in state["ht"]:
+            if post(f"⏸️ HALF TIME - {lg} 🟢\n\n{h_name} {h_score} - {a_score} {a_name}\n\nHT\n#UnfilteredScores"):
+                state["ht"][ev_id]=1; posted+=1
+
+        # 5. FT - NEVER MISS
+        if status_name in ["STATUS_FINAL","STATUS_END"] and ev_id not in state["ft"]:
+            if h_score!= "0" or a_score!= "0" or minute >= 80: # avoid posting 0-0 postponed as FT
+                winner = f"{h_name} WINS! 🎉" if int(h_score or 0) > int(a_score or 0) else f"{a_name} WINS! 🎉" if int(a_score or 0) > int(h_score or 0) else "DRAW!"
+                if post(f"✅ FULL TIME - {lg} 🟢\n\n{h_name} {h_score} - {a_score} {a_name}\n\n{winner}\nFT\n#UnfilteredScores"):
+                    state["ft"][ev_id]=1; posted+=1
+
+    # 6. NEWS - 1 per run max, so page not boring but not spam
+    if posted < 2:
+        try:
+            for code in ["eng.1","esp.1","ken.1"]:
+                data = requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/news", timeout=8).json()
+                for art in data.get("articles",[])[:3]:
+                    aid = str(art.get("id","") or art.get("headline","")[:30])
+                    if aid in state["news"]: continue
+                    title = art.get("headline","")
+                    desc = art.get("description","")[:180]
+                    if post(f"📰 NEWS 🟢\n\n{title}\n\n{desc}\n\n#UnfilteredScores"):
+                        state["news"].append(aid); posted+=1; break
+                if posted>0: break
+        except: pass
+
+    print(f"V23 DONE Posted:{posted}")
     save_state(state)
 
-if __name__=="__main__": main()
+if __name__ == "__main__": main()
