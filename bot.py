@@ -1,4 +1,4 @@
-# bot.py V39 FINAL COMPLETE - ALL FEATURES - NOTHING REMOVED
+# bot.py V39 FINAL COMPLETE - ALL FEATURES - FIXED SYNTAX
 import os, json, requests, re, xml.etree.ElementTree as ET, random, time
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -21,24 +21,32 @@ def load_state():
     try:
         with open(STATE_FILE) as f:
             s=json.load(f)
-            for k,v in default.items(): s.setdefault(k,v)
+            for k,v in default.items():
+                s.setdefault(k,v)
             return s
-    except: return default
+    except:
+        return default
+
 def save_state(s):
-    with open(STATE_FILE,"w") as f: json.dump(s,f)
+    with open(STATE_FILE,"w") as f:
+        json.dump(s,f)
 
 def dl(url):
     try:
         r=requests.get(url, timeout=8, headers={"User-Agent":"Mozilla/5.0"})
         if r.status_code==200 and len(r.content)>4000:
             return Image.open(BytesIO(r.content)).convert("RGBA")
-    except: return None
+    except:
+        return None
+    return None
 
 def get_real_scorer_photo(player_name, espn_id=None):
-    if not player_name: return None
+    if not player_name:
+        return None
     if espn_id:
         im=dl(f"https://a.espncdn.com/i/headshots/soccer/players/full/{espn_id}.png")
-        if im: return im
+        if im:
+            return im
     try:
         s=requests.get(f"https://api.sofascore.app/api/v1/search/all?q={player_name}", timeout=5, headers={"User-Agent":"Mozilla/5.0"}).json()
         for res in s.get("results",[]):
@@ -46,28 +54,33 @@ def get_real_scorer_photo(player_name, espn_id=None):
                 pid=res.get("entity",{}).get("id")
                 if pid:
                     im=dl(f"https://api.sofascore.app/api/v1/player/{pid}/image")
-                    if im: return im
-    except: pass
+                    if im:
+                        return im
+    except:
+        pass
     return None
 
 def get_real_match_photo(ev_id, code, home, away):
-    # Try ESPN header pic first - most real live action
     try:
         j=requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/summary?event={ev_id}", timeout=4).json()
-        pics=j.get("header",{}).get("pics") or j.get("gameInfo",{}).get("images") or []
+        pics=j.get("header",{}).get("pics") or []
         if pics:
-            href=pics[0].get("href") or pics[0].get("url")
+            href=pics[0].get("href")
             if href:
                 im=dl(href)
-                if im: return im
-    except: pass
+                if im:
+                    return im
+    except:
+        pass
     try:
         j=requests.get(f"https://www.thesportsdb.com/api/v1/json/3/searchevents.php?e={home}_vs_{away}", timeout=4).json()
         ev=j.get("event",[]) or []
         if ev and ev[0].get("strThumb"):
             im=dl(ev[0]["strThumb"])
-            if im: return im
-    except: pass
+            if im:
+                return im
+    except:
+        pass
     return None
 
 def get_fast_incidents_from_sofa(home, away):
@@ -77,7 +90,8 @@ def get_fast_incidents_from_sofa(home, away):
         for res in s.get("results",[])[:3]:
             if res.get("type")=="event":
                 eid=res.get("entity",{}).get("id")
-                if not eid: continue
+                if not eid:
+                    continue
                 inc=requests.get(f"https://api.sofascore.app/api/v1/event/{eid}/incidents", timeout=4, headers={"User-Agent":"Mozilla/5.0"}).json()
                 for incd in inc.get("incidents",[]):
                     itype=incd.get("incidentType","")
@@ -85,60 +99,81 @@ def get_fast_incidents_from_sofa(home, away):
                     minute=incd.get("time",0)
                     pid=incd.get("player",{}).get("id")
                     photo=None
-                    if pid: photo=dl(f"https://api.sofascore.app/api/v1/player/{pid}/image")
+                    if pid:
+                        photo=dl(f"https://api.sofascore.app/api/v1/player/{pid}/image")
                     if itype=="goal":
                         goals.append((pname, f"{minute}'", photo, incd))
                     elif itype=="card" and incd.get("incidentClass")=="red":
                         reds.append((pname, f"{minute}'", photo))
                     elif itype=="penalty":
                         pens.append((pname, f"{minute}'", photo, incd.get("reason","")))
-                if goals or reds: break
-    except: pass
+                if goals or reds:
+                    break
+    except:
+        pass
     return goals, reds, pens
 
 def get_source_name(link):
     try:
         domain=urlparse(link).netloc.lower()
-        if "skysports" in domain: return "Sky Sports"
-        if "bbc" in domain: return "BBC Sport"
-        if "espn" in domain: return "ESPN"
-        if "goal.com" in domain: return "Goal.com"
-        if "marca" in domain: return "Marca"
+        if "skysports" in domain:
+            return "Sky Sports"
+        if "bbc" in domain:
+            return "BBC Sport"
+        if "espn" in domain:
+            return "ESPN"
+        if "goal.com" in domain:
+            return "Goal.com"
+        if "marca" in domain:
+            return "Marca"
         return domain.replace("www.","").split(".")[0].capitalize()
-    except: return "Football News"
+    except:
+        return "Football News"
 
 def make_news_img_CLEAR(real_img):
     W,H=1080,1350
     try:
         real_img = real_img.convert("RGB")
-        enhancer = ImageEnhance.Sharpness(real_img); real_img = enhancer.enhance(1.6)
-        enhancer2 = ImageEnhance.Contrast(real_img); real_img = enhancer2.enhance(1.15)
-        rw,rh = real_img.size; ratio = max(W/rw, H/rh)
+        enhancer = ImageEnhance.Sharpness(real_img)
+        real_img = enhancer.enhance(1.6)
+        enhancer2 = ImageEnhance.Contrast(real_img)
+        real_img = enhancer2.enhance(1.15)
+        rw,rh = real_img.size
+        ratio = max(W/rw, H/rh)
         new_size = (int(rw*ratio), int(rh*ratio))
         bg = real_img.resize(new_size, Image.LANCZOS)
-        left = (new_size[0]-W)//2; top = (new_size[1]-H)//2
+        left = (new_size[0]-W)//2
+        top = (new_size[1]-H)//2
         bg = bg.crop((left, top, left+W, top+H))
     except:
         bg = real_img.resize((W,H), Image.LANCZOS)
     d=ImageDraw.Draw(bg, "RGBA")
-    try: fs=ImageFont.truetype("DejaVuSans-Bold.ttf",36)
-    except: fs=ImageFont.load_default()
+    try:
+        fs=ImageFont.truetype("DejaVuSans-Bold.ttf",36)
+    except:
+        fs=ImageFont.load_default()
     d.rounded_rectangle([15,15,W-15,80], radius=20, fill=(0,255,100))
-    d.text((35,28), "Unfiltered Scores 🟢 • BREAKING", font=fs, fill=(0,0,0))
-    path="/tmp/news.png"; bg.save(path, quality=100, subsampling=0); return path
+    d.text((35,28), "Unfiltered Scores - BREAKING", font=fs, fill=(0,0,0))
+    path="/tmp/news.png"
+    bg.save(path, quality=100, subsampling=0)
+    return path
 
 def post(msg, path):
     try:
         url=f"https://graph.facebook.com/v20.0/{PAGE_ID}/photos"
         with open(path,"rb") as f:
             r=requests.post(url, data={"caption":msg,"access_token":PAGE_TOKEN}, files={"source":f}, timeout=20)
-        print(f"POST {r.status_code}"); return r.status_code==200
-    except Exception as e: print(e); return False
+        print(f"POST {r.status_code}")
+        return r.status_code==200
+    except Exception as e:
+        print(e)
+        return False
 
 def get_bg(name):
     nl=name.lower()
     for k,v in BIG_BG.items():
-        if k in nl: return v
+        if k in nl:
+            return v
     return (12,24,12)
 
 def make_lineup_img_clean(home, away, hid, aid, lg, date_str, time_str, real_ground):
@@ -148,19 +183,29 @@ def make_lineup_img_clean(home, away, hid, aid, lg, date_str, time_str, real_gro
             bg=real_ground.resize((W,H), Image.LANCZOS)
             overlay=Image.new("RGBA",(W,H),(0,0,0,120))
             bg=Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
-        except: bg=Image.new("RGB",(W,H),get_bg(home))
-    else: bg=Image.new("RGB",(W,H),get_bg(home))
+        except:
+            bg=Image.new("RGB",(W,H),get_bg(home))
+    else:
+        bg=Image.new("RGB",(W,H),get_bg(home))
     d=ImageDraw.Draw(bg)
-    try: fb=ImageFont.truetype("DejaVuSans-Bold.ttf",88); fm=ImageFont.truetype("DejaVuSans-Bold.ttf",42); fs=ImageFont.truetype("DejaVuSans-Bold.ttf",32)
-    except: fb=fm=fs=ImageFont.load_default()
+    try:
+        fb=ImageFont.truetype("DejaVuSans-Bold.ttf",88)
+        fm=ImageFont.truetype("DejaVuSans-Bold.ttf",42)
+        fs=ImageFont.truetype("DejaVuSans-Bold.ttf",32)
+    except:
+        fb=fm=fs=ImageFont.load_default()
     d.rounded_rectangle([30,20,W-30,85], radius=20, fill=(0,255,100))
-    d.text((50,30), f"Unfiltered Scores 🟢 • {lg}", font=fs, fill=(0,0,0))
+    d.text((50,30), f"Unfiltered Scores - {lg}", font=fs, fill=(0,0,0))
     d.text((780,30), "LINEUP", font=fs, fill=(0,0,0))
     def badge(tid,x,y):
-        if not tid: return
+        if not tid:
+            return
         b=dl(f"https://a.espncdn.com/i/teamlogos/soccer/500/{tid}.png")
-        if b: b=b.resize((260,260), Image.LANCZOS); bg.paste(b,(x,y),b)
-    badge(hid,140,160); badge(aid,680,160)
+        if b:
+            b=b.resize((260,260), Image.LANCZOS)
+            bg.paste(b,(x,y),b)
+    badge(hid,140,160)
+    badge(aid,680,160)
     d.text((90,450), home.upper()[:16], font=fm, fill=(255,255,255))
     d.text((670,450), away.upper()[:16], font=fm, fill=(255,255,255))
     d.rounded_rectangle([360,600,720,680], radius=30, fill=(255,255,255))
@@ -168,8 +213,10 @@ def make_lineup_img_clean(home, away, hid, aid, lg, date_str, time_str, real_gro
     d.text((250,760), f"{date_str}", font=fm, fill=(255,255,255))
     d.text((250,820), f"{time_str} EAT", font=fm, fill=(0,255,100))
     d.rounded_rectangle([30,1240,W-30,1320], radius=20, fill=(0,255,100))
-    d.text((50,1255), f"Unfiltered Scores 🟢 • {home} vs {away}", font=fs, fill=(0,0,0))
-    path="/tmp/m.png"; bg.save(path, quality=100); return path
+    d.text((50,1255), f"Unfiltered Scores - {home} vs {away}", font=fs, fill=(0,0,0))
+    path="/tmp/m.png"
+    bg.save(path, quality=100)
+    return path
 
 def make_live_img(home, away, hid, aid, score, lg, top, bottom, real_ground, face=None):
     W,H=1080,1350
@@ -178,29 +225,48 @@ def make_live_img(home, away, hid, aid, score, lg, top, bottom, real_ground, fac
             bg=real_ground.resize((W,H), Image.LANCZOS)
             overlay=Image.new("RGBA",(W,H),(0,0,0,110))
             bg=Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
-        except: bg=Image.new("RGB",(W,H),get_bg(home))
-    else: bg=Image.new("RGB",(W,H),get_bg(home))
+        except:
+            bg=Image.new("RGB",(W,H),get_bg(home))
+    else:
+        bg=Image.new("RGB",(W,H),get_bg(home))
     d=ImageDraw.Draw(bg)
-    try: fb=ImageFont.truetype("DejaVuSans-Bold.ttf",95); fm=ImageFont.truetype("DejaVuSans-Bold.ttf",48); fs=ImageFont.truetype("DejaVuSans-Bold.ttf",36)
-    except: fb=fm=fs=ImageFont.load_default()
+    try:
+        fb=ImageFont.truetype("DejaVuSans-Bold.ttf",95)
+        fm=ImageFont.truetype("DejaVuSans-Bold.ttf",48)
+        fs=ImageFont.truetype("DejaVuSans-Bold.ttf",36)
+    except:
+        fb=fm=fs=ImageFont.load_default()
     d.rounded_rectangle([30,20,W-30,85], radius=20, fill=(0,255,100))
-    d.text((50,30), f"Unfiltered Scores 🟢 • {lg}", font=fs, fill=(0,0,0))
+    d.text((50,30), f"Unfiltered Scores - {lg}", font=fs, fill=(0,0,0))
     d.text((750,30), top[:18], font=fs, fill=(255,255,255))
     if face:
         try:
-            sf=face.resize((420,420), Image.LANCZOS); mask=Image.new("L",(420,420),0); ImageDraw.Draw(mask).ellipse([0,0,420,420], fill=255)
-            bg.paste(sf,(330,140),mask); d.ellipse([330,140,750,560], outline=(0,255,100), width=6)
-        except: pass
+            sf=face.resize((420,420), Image.LANCZOS)
+            mask=Image.new("L",(420,420),0)
+            ImageDraw.Draw(mask).ellipse([0,0,420,420], fill=255)
+            bg.paste(sf,(330,140),mask)
+            d.ellipse([330,140,750,560], outline=(0,255,100), width=6)
+        except:
+            pass
     else:
         def badge(tid,x):
-            if not tid: return
+            if not tid:
+                return
             b=dl(f"https://a.espncdn.com/i/teamlogos/soccer/500/{tid}.png")
-            if b: b=b.resize((180,180), Image.LANCZOS); bg.paste(b,(x,200),b)
-        badge(hid,80); badge(aid,820)
-        d.text((60,450), home[:14].upper(), font=fm, fill=(255,255,255)); d.text((800,450), away[:14].upper(), font=fm, fill=(255,255,255))
-    d.rounded_rectangle([280,700,800,820], radius=30, fill=(255,255,255)); d.text((340,720), score, font=fb, fill=(0,0,0))
-    d.rounded_rectangle([30,1240,W-30,1320], radius=20, fill=(0,255,100)); d.text((50,1255), bottom[:52], font=fs, fill=(0,0,0))
-    path="/tmp/m.png"; bg.save(path, quality=100); return path
+            if b:
+                b=b.resize((180,180), Image.LANCZOS)
+                bg.paste(b,(x,200),b)
+        badge(hid,80)
+        badge(aid,820)
+        d.text((60,450), home[:14].upper(), font=fm, fill=(255,255,255))
+        d.text((800,450), away[:14].upper(), font=fm, fill=(255,255,255))
+    d.rounded_rectangle([280,700,800,820], radius=30, fill=(255,255,255))
+    d.text((340,720), score, font=fb, fill=(0,0,0))
+    d.rounded_rectangle([30,1240,W-30,1320], radius=20, fill=(0,255,100))
+    d.text((50,1255), bottom[:52], font=fs, fill=(0,0,0))
+    path="/tmp/m.png"
+    bg.save(path, quality=100)
+    return path
 
 def make_red_card_img(home, away, hid, aid, score, lg, player_name, minute, face, real_ground):
     W,H=1080,1350
@@ -209,27 +275,40 @@ def make_red_card_img(home, away, hid, aid, score, lg, player_name, minute, face
             bg=real_ground.resize((W,H), Image.LANCZOS)
             overlay=Image.new("RGBA",(W,H),(0,0,0,110))
             bg=Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
-        except: bg=Image.new("RGB",(W,H),(12,12,12))
-    else: bg=Image.new("RGB",(W,H),(12,12,12))
+        except:
+            bg=Image.new("RGB",(W,H),(12,12,12))
+    else:
+        bg=Image.new("RGB",(W,H),(12,12,12))
     d=ImageDraw.Draw(bg)
-    try: fb=ImageFont.truetype("DejaVuSans-Bold.ttf",90); fm=ImageFont.truetype("DejaVuSans-Bold.ttf",44); fs=ImageFont.truetype("DejaVuSans-Bold.ttf",34)
-    except: fb=fm=fs=ImageFont.load_default()
+    try:
+        fb=ImageFont.truetype("DejaVuSans-Bold.ttf",90)
+        fm=ImageFont.truetype("DejaVuSans-Bold.ttf",44)
+        fs=ImageFont.truetype("DejaVuSans-Bold.ttf",34)
+    except:
+        fb=fm=fs=ImageFont.load_default()
     d.rounded_rectangle([30,20,W-30,85], radius=20, fill=(255,0,0))
-    d.text((50,30), f"RED CARD 🔴 • {lg}", font=fs, fill=(255,255,255))
+    d.text((50,30), f"RED CARD - {lg}", font=fs, fill=(255,255,255))
     d.text((780,30), minute, font=fs, fill=(255,255,255))
     if face:
         try:
-            sf=face.resize((380,380), Image.LANCZOS); mask=Image.new("L",(380,380),0); ImageDraw.Draw(mask).ellipse([0,0,380,380], fill=255)
-            bg.paste(sf,(350,160),mask); d.ellipse([350,160,730,540], outline=(255,0,0), width=6)
-        except: pass
+            sf=face.resize((380,380), Image.LANCZOS)
+            mask=Image.new("L",(380,380),0)
+            ImageDraw.Draw(mask).ellipse([0,0,380,380], fill=255)
+            bg.paste(sf,(350,160),mask)
+            d.ellipse([350,160,730,540], outline=(255,0,0), width=6)
+        except:
+            pass
     d.rounded_rectangle([30,600,W-30,760], radius=25, fill=(255,0,0))
     d.text((50,620), player_name[:30].upper(), font=fm, fill=(255,255,255))
-    d.text((50,670), f"{minute} • RED CARD", font=fs, fill=(255,255,255))
-    d.rounded_rectangle([280,780,800,880], radius=30, fill=(255,255,255)); d.text((340,800), score, font=fb, fill=(0,0,0))
+    d.text((50,670), f"{minute} - RED CARD", font=fs, fill=(255,255,255))
+    d.rounded_rectangle([280,780,800,880], radius=30, fill=(255,255,255))
+    d.text((340,800), score, font=fb, fill=(0,0,0))
     d.text((280,900), f"{home} vs {away}", font=fm, fill=(255,255,255))
     d.rounded_rectangle([30,1240,W-30,1320], radius=20, fill=(255,0,0))
-    d.text((50,1255), f"Unfiltered Scores 🔴 • RED CARD {player_name}", font=fs, fill=(255,255,255))
-    path="/tmp/m.png"; bg.save(path, quality=100); return path
+    d.text((50,1255), f"Unfiltered Scores - RED CARD {player_name}", font=fs, fill=(255,255,255))
+    path="/tmp/m.png"
+    bg.save(path, quality=100)
+    return path
 
 def make_ht_img_with_scorer(home, away, hid, aid, score, lg, scorers_list, real_ground):
     W,H=1080,1350
@@ -238,43 +317,61 @@ def make_ht_img_with_scorer(home, away, hid, aid, score, lg, scorers_list, real_
             bg=real_ground.resize((W,H), Image.LANCZOS)
             overlay=Image.new("RGBA",(W,H),(0,0,0,115))
             bg=Image.alpha_composite(bg.convert("RGBA"), overlay).convert("RGB")
-        except: bg=Image.new("RGB",(W,H),get_bg(home))
-    else: bg=Image.new("RGB",(W,H),get_bg(home))
+        except:
+            bg=Image.new("RGB",(W,H),get_bg(home))
+    else:
+        bg=Image.new("RGB",(W,H),get_bg(home))
     d=ImageDraw.Draw(bg)
-    try: fb=ImageFont.truetype("DejaVuSans-Bold.ttf",90); fm=ImageFont.truetype("DejaVuSans-Bold.ttf",42); fs=ImageFont.truetype("DejaVuSans-Bold.ttf",32)
-    except: fb=fm=fs=ImageFont.load_default()
+    try:
+        fb=ImageFont.truetype("DejaVuSans-Bold.ttf",90)
+        fm=ImageFont.truetype("DejaVuSans-Bold.ttf",42)
+        fs=ImageFont.truetype("DejaVuSans-Bold.ttf",32)
+    except:
+        fb=fm=fs=ImageFont.load_default()
     d.rounded_rectangle([30,20,W-30,85], radius=20, fill=(0,255,100))
-    d.text((50,30), f"Unfiltered Scores 🟢 • {lg}", font=fs, fill=(0,0,0))
+    d.text((50,30), f"Unfiltered Scores - {lg}", font=fs, fill=(0,0,0))
     d.text((800,30), "HT", font=fs, fill=(0,0,0))
     def badge(tid,x,y):
         b=dl(f"https://a.espncdn.com/i/teamlogos/soccer/500/{tid}.png")
-        if b: b=b.resize((220,220), Image.LANCZOS); bg.paste(b,(x,y),b)
-    badge(hid,120,140); badge(aid,740,140)
+        if b:
+            b=b.resize((220,220), Image.LANCZOS)
+            bg.paste(b,(x,y),b)
+    badge(hid,120,140)
+    badge(aid,740,140)
     d.text((90,390), home.upper()[:15], font=fm, fill=(255,255,255))
     d.text((700,390), away.upper()[:15], font=fm, fill=(255,255,255))
     d.rounded_rectangle([320,470,760,570], radius=30, fill=(255,255,255))
     d.text((380,485), score, font=fb, fill=(0,0,0))
     y=620
-    for i,(name, minute, photo, *_) in enumerate(scorers_list[:4]):
+    for i in range(min(4,len(scorers_list))):
+        name, minute, photo = scorers_list[i][0], scorers_list[i][1], scorers_list[i][2]
         if photo:
             try:
                 p=photo.resize((110,110), Image.LANCZOS)
-                mask=Image.new("L",(110,110),0); ImageDraw.Draw(mask).ellipse([0,0,110,110], fill=255)
+                mask=Image.new("L",(110,110),0)
+                ImageDraw.Draw(mask).ellipse([0,0,110,110], fill=255)
                 bg.paste(p,(70, y+i*135), mask)
-            except: pass
+            except:
+                pass
         d.text((200, y+15+i*135), f"{name} {minute}", font=fm, fill=(255,255,255))
     d.rounded_rectangle([30,1240,W-30,1320], radius=20, fill=(0,255,100))
-    d.text((50,1255), f"Unfiltered Scores 🟢 • HT {score} • {home} vs {away}", font=fs, fill=(0,0,0))
-    path="/tmp/m.png"; bg.save(path, quality=100); return path
+    d.text((50,1255), f"Unfiltered Scores - HT {score} - {home} vs {away}", font=fs, fill=(0,0,0))
+    path="/tmp/m.png"
+    bg.save(path, quality=100)
+    return path
 
 def get_sb(lg):
     try:
         j=requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lg}/scoreboard", timeout=4).json()
         evs=[]
         for ev in j.get("events",[]):
-            ev["_code"]=lg; ev["_lname"]=NAMES.get(lg,lg); evs.append(ev)
+            ev["_code"]=lg
+            ev["_lname"]=NAMES.get(lg,lg)
+            evs.append(ev)
         return evs
-    except: return []
+    except:
+        return []
+
 def get_sum(args):
     ev_id, code=args
     try:
@@ -282,25 +379,33 @@ def get_sum(args):
         det=j.get("header",{}).get("competitions",[{}])[0].get("details",[]) or []
         line=j.get("lineups") or j.get("rosters") or []
         return {"d":det,"l":line}
-    except: return {"d":[],"l":[]}
+    except:
+        return {"d":[],"l":[]}
+
 def get_lineup_text(lineups):
-    if not lineups: return ""
+    if not lineups:
+        return ""
     out=""
     try:
         for team in lineups[:2]:
             tname=team.get('team',{}).get('displayName','') or team.get('team',{}).get('name','')
             roster=team.get('roster',[]) or team.get('athletes',[])
-            if not roster or len(roster)<7: return ""
-            out+=f"🟢 {tname} XI:\n"
+            if not roster or len(roster)<7:
+                return ""
+            out+=f" {tname} XI:\n"
             for p in roster[:11]:
                 name=p.get('athlete',{}).get('displayName','') or p.get('displayName','')
-                if name: out+=f"• {name}\n"
+                if name:
+                    out+=f"- {name}\n"
             out+="\n"
-    except: return ""
-    if "•" not in out: return ""
+    except:
+        return ""
+    if "-" not in out:
+        return ""
     return out[:600]
 
 RSS_FEEDS=["https://feeds.bbci.co.uk/sport/football/rss.xml","https://www.skysports.com/rss/0,20514,11095,00.xml","https://www.goal.com/feeds/en/news","https://e00-marca.uecdn.es/rss/futbol/en.xml"]
+
 def fetch_rss_news():
     news=[]
     for rss in RSS_FEEDS:
@@ -313,75 +418,82 @@ def fetch_rss_news():
                 desc=item.findtext("description","") or ""
                 img=None
                 enc=item.find("enclosure")
-                if enc is not None: img=enc.get("url")
+                if enc is not None:
+                    img=enc.get("url")
                 if not img:
                     m=re.search(r'<img[^>]+src="([^"]+)"', desc)
-                    if m: img=m.group(1)
+                    if m:
+                        img=m.group(1)
                 if title and img:
                     news.append({"title":title.strip(),"link":link,"img":img,"desc":re.sub('<[^<]+?>','',desc)[:200]})
-        except: continue
+        except:
+            continue
     return news
+
 def fetch_espn_news():
     news=[]
     try:
         j=requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/news", timeout=6).json()
         for a in j.get("articles",[])[:8]:
-            title=a.get("headline",""); link=a.get("links",{}).get("web",{}).get("href",""); imgs=a.get("images",[]); img=imgs[0].get("url") if imgs else None
-            if title and img: news.append({"title":title,"link":link,"img":img,"desc":a.get("description","")[:200]})
-    except: pass
+            title=a.get("headline","")
+            link=a.get("links",{}).get("web",{}).get("href","")
+            imgs=a.get("images",[])
+            img=imgs[0].get("url") if imgs else None
+            if title and img:
+                news.append({"title":title,"link":link,"img":img,"desc":a.get("description","")[:200]})
+    except:
+        pass
     return news
 
 def run_once(st):
     all_ev=[]
     with ThreadPoolExecutor(max_workers=7) as ex:
-        for lst in ex.map(get_sb, PRIORITY): all_ev.extend(lst)
+        for lst in ex.map(get_sb, PRIORITY):
+            all_ev.extend(lst)
     live=[e for e in all_ev if e["competitions"][0]["status"]["type"]["name"] in ["STATUS_IN_PROGRESS","STATUS_HALFTIME","STATUS_SCHEDULED","STATUS_FINAL"]]
     sums={}
     with ThreadPoolExecutor(max_workers=12) as ex:
         ids=[(e["id"], e["_code"]) for e in live]
-        for e,s in zip(live, ex.map(get_sum, ids)): sums[e["id"]]=s
+        for e,s in zip(live, ex.map(get_sum, ids)):
+            sums[e["id"]]=s
     posted=0
     for ev in live:
-        ev_id=ev["id"]; code=ev["_code"]; comp=ev["competitions"][0]; status=comp["status"]["type"]["name"]; short=comp["status"]["type"].get("shortDetail","")
+        ev_id=ev["id"]
+        code=ev["_code"]
+        comp=ev["competitions"][0]
+        status=comp["status"]["type"]["name"]
+        short=comp["status"]["type"].get("shortDetail","")
         comps=comp["competitors"]
-        try: h=next(x for x in comps if x["homeAway"]=="home"); a=next(x for x in comps if x["homeAway"]=="away")
-        except: continue
-        hn,an=h["team"]["displayName"],a["team"]["displayName"]; hid,aid=h["team"].get("id"),a["team"].get("id"); hs,as_=str(h.get("score","0")),str(a.get("score","0")); lg=ev["_lname"]
-        summ=sums.get(ev_id,{"d":[],"l":[]}); details=summ["d"]; lineups=summ["l"]
-        m=re.search(r"(\d+)'", short); minute=int(m.group(1)) if m else 0
+        try:
+            h=next(x for x in comps if x["homeAway"]=="home")
+            a=next(x for x in comps if x["homeAway"]=="away")
+        except:
+            continue
+        hn,an=h["team"]["displayName"],a["team"]["displayName"]
+        hid,aid=h["team"].get("id"),a["team"].get("id")
+        hs,as_=str(h.get("score","0")),str(a.get("score","0"))
+        lg=ev["_lname"]
+        summ=sums.get(ev_id,{"d":[],"l":[]})
+        details=summ["d"]
+        lineups=summ["l"]
+        m=re.search(r"(\d+)'", short)
+        minute=int(m.group(1)) if m else 0
         real_ground=get_real_match_photo(ev_id, code, hn, an)
         try:
-            dt_str=comp.get("date",""); dt=datetime.fromisoformat(dt_str.replace("Z","+00:00")).astimezone(EAT)
-            date_fmt=dt.strftime("%a %d %b %Y"); time_fmt=dt.strftime("%I:%M %p"); hours_until=(dt - datetime.now(EAT)).total_seconds()/3600
-        except: date_fmt=time_fmt=""; hours_until=999
+            dt_str=comp.get("date","")
+            dt=datetime.fromisoformat(dt_str.replace("Z","+00:00")).astimezone(EAT)
+            date_fmt=dt.strftime("%a %d %b %Y")
+            time_fmt=dt.strftime("%I:%M %p")
+            hours_until=(dt - datetime.now(EAT)).total_seconds()/3600
+        except:
+            date_fmt=time_fmt=""
+            hours_until=999
 
-        # LINEUP - with real stadium
         if status=="STATUS_SCHEDULED" and ev_id not in st.get("lineup",{}):
             if hours_until <= 2.5 and hours_until >= -0.5:
                 txt=get_lineup_text(lineups)
                 if txt and len(txt)>30:
                     img=make_lineup_img_clean(hn,an,hid,aid,lg,date_fmt,time_fmt,real_ground)
-                    if post(f"📋 LINEUP 🟢 {lg}\n\n{hn} vs {an}\n\n{date_fmt} • {time_fmt} EAT\n\n{txt}Unfiltered Scores 🟢\n#UnfilteredScores 🟢", img):
-                        st.setdefault("lineup",{})[ev_id]=1; posted+=1
-
-        # FAST INCIDENTS - SOFA for goals, red, pens
-        fast_goals, fast_reds, fast_pens = get_fast_incidents_from_sofa(hn,an)
-
-        # GOALS - NEVER MISS
-        last=st.get("last",{}).get(ev_id,"0-0")
-        if status in ["STATUS_IN_PROGRESS","STATUS_HALFTIME"] and last!=f"{hs}-{as_}":
-            if not (last=="0-0" and hs=="0" and as_=="0"):
-                gid=f"{ev_id}_{hs}-{as_}"
-                if gid not in st.get("goals",{}):
-                    scorer_txt,pid,pname="",None,""
-                    for d in details[-6:]:
-                        if "goal" in str(d.get("type","")).lower() or "Goal" in str(d.get("text","")):
-                            scorer_txt=d.get("text",""); pid=d.get("athlete",{}).get("id"); pname=d.get("athlete",{}).get("displayName",""); break
-                    face=None; minute_txt=f"{minute}'"
-                    is_pen=False
-                    if fast_goals:
-                        pname_ft, minute_ft, face_ft, incd = fast_goals[-1]
-                        if pname_ft: pname=pname_ft
-                        minute_txt=minute_ft
-                        face=face_ft
-     
+                    if post(f"LINEUP - {lg}\n\n{hn} vs {an}\n\n{date_fmt} - {time_fmt} EAT\n\n{txt}Unfiltered Scores\n#UnfilteredScores", img):
+                        st.setdefault("lineup",{})[ev_id]=1
+    
