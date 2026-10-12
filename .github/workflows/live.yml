@@ -6,7 +6,6 @@ on:
 concurrency:
   group: live-football
   cancel-in-progress: false
-
 jobs:
   live:
     runs-on: ubuntu-latest
@@ -18,7 +17,7 @@ jobs:
         with:
           python-version: "3.11"
       - run: pip install requests pillow
-      - name: Pull latest state first
+      - name: Pull latest state
         run: git pull --rebase || true
       - run: python bot.py
         env:
@@ -30,5 +29,5 @@ jobs:
           git config user.email "bot@bot.com"
           git pull --rebase || true
           git add posted_state.json || true
-          git diff --staged --quiet || git commit -m "state $(date)"
+          git diff --staged --quiet || git commit -m "state $(date -u)"
           git push || true
