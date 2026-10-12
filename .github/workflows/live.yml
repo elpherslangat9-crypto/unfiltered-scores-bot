@@ -2,7 +2,7 @@ name: Live Scores Bot - Real Scorer Photo
 
 on:
   schedule:
-    - cron: '* * * * *'  # EVERY 1 MINUTE - FASTEST GITHUB ALLOWS
+    - cron: '* * * * *'  # EVERY 1 MINUTE - FASTEST
   workflow_dispatch:  # Manual run button
 
 concurrency:
@@ -24,7 +24,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
+          # FIXED: Removed cache: 'pip' that was causing Error: No file in [**/requirements.txt]
+          # IMPORTANT: This was your only error in screenshot
 
       - name: Install dependencies - FAST
         run: |
@@ -42,11 +43,15 @@ jobs:
           git config user.name "Unfiltered Bot"
           git config user.email "bot@unfilteredscores.com"
           git add posted_state.json || true
-          # Only commit if changed
+          # Only commit if changed - prevents empty commit error
           if ! git diff --cached --quiet; then
-            git commit -m "⚽ state update $(date -u +'%H:%M:%S')"
+            git commit -m "⚽ state update $(date -u +'%H:%M:%S') - Unfiltered Scores 🟢"
             git pull --rebase origin main || git pull --rebase origin master || true
             git push || true
           else
-            echo "No state change"
+            echo "No state change - Unfiltered Scores 🟢"
           fi
+
+      - name: Keep workflow alive
+        if: always()
+        run: echo "Unfiltered Scores 🟢 V29 - Done"
