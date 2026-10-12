@@ -1,4 +1,4 @@
-# bot.py V29 - REAL SCORER PHOTO FROM 4 SOURCES - NEVER MISS 🟢
+# bot.py V30 - FIXED KeyError last + REAL SCORER PHOTO + BRAND 🟢
 import os, json, requests, re, textwrap
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -20,10 +20,18 @@ BIG_BG={
     "manchester united":(218,0,0), "bayern":(220,5,45), "psg":(0,38,84), "atletico":(220,0,0)
 }
 
+# === FIXED LOAD_STATE - AUTO FIXES OLD FILE - NO MORE KeyError ===
 def load_state():
+    default = {"lineup":{},"goals":{},"ht":{},"ft":{},"last":{},"news":[]}
     try:
-        with open(STATE_FILE) as f: return json.load(f)
-    except: return {"lineup":{},"goals":{},"ht":{},"ft":{},"last":{}}
+        with open(STATE_FILE) as f:
+            s=json.load(f)
+            # Auto-upgrade old file that misses keys like 'last'
+            for k,v in default.items():
+                s.setdefault(k, v)
+            return s
+    except:
+        return default
 
 def save_state(s):
     with open(STATE_FILE,"w") as f: json.dump(s,f)
@@ -35,54 +43,39 @@ def dl(url):
             return Image.open(BytesIO(r.content)).convert("RGBA")
     except: return None
 
-# === REAL SCORER PHOTO FROM ALL SOURCES ===
 def get_real_scorer_photo(player_name, espn_id=None):
-    # 1. ESPN - HD - best for EPL/UCL
     if espn_id:
         for url in [
             f"https://a.espncdn.com/i/headshots/soccer/players/full/{espn_id}.png",
             f"https://a.espncdn.com/combiner/i?img=%2Fi%2Fheadshots%2Fsoccer%2Fplayers%2Ffull%2F{espn_id}.png&w=400&h=400"
         ]:
             img=dl(url)
-            if img: print(f"PHOTO ESPN {player_name}"); return img
-
-    # 2. SOFASCORE - HAS EVERY PLAYER IN WORLD (Real Madrid, Barca, KPL too)
+            if img: return img
     try:
-        # Search player
         s=requests.get(f"https://api.sofascore.app/api/v1/search/all?q={player_name}", timeout=4, headers={"User-Agent":"Mozilla/5.0"}).json()
-        results=s.get("results",[])
-        for res in results:
+        for res in s.get("results",[]):
             if res.get("type")=="player":
                 pid=res.get("entity",{}).get("id")
                 if pid:
                     img=dl(f"https://api.sofascore.app/api/v1/player/{pid}/image")
-                    if img: print(f"PHOTO SOFASCORE {player_name}"); return img
+                    if img: return img
     except: pass
-
-    # 3. THESPORTSDB - CUTOUT PNG
     try:
         j=requests.get(f"https://www.thesportsdb.com/api/v1/json/3/searchplayers.php?p={player_name}", timeout=4).json()
-        players=j.get("player",[])
-        if players:
-            for p in players[:2]:
-                cut=p.get("strCutout") or p.get("strThumb")
-                if cut:
-                    img=dl(cut)
-                    if img: print(f"PHOTO SPORTSDB {player_name}"); return img
+        for p in (j.get("player",[]) or [])[:2]:
+            cut=p.get("strCutout") or p.get("strThumb")
+            if cut:
+                img=dl(cut)
+                if img: return img
     except: pass
-
-    # 4. WIKIPEDIA - LAST FALLBACK
     try:
         j=requests.get(f"https://en.wikipedia.org/w/api.php?action=query&titles={player_name}&prop=pageimages&format=json&pithumbsize=400", timeout=4).json()
-        pages=j.get("query",{}).get("pages",{})
-        for pg in pages.values():
+        for pg in j.get("query",{}).get("pages",{}).values():
             thumb=pg.get("thumbnail",{}).get("source")
             if thumb:
                 img=dl(thumb)
-                if img: print(f"PHOTO WIKI {player_name}"); return img
+                if img: return img
     except: pass
-
-    print(f"PHOTO FAIL {player_name}")
     return None
 
 def get_bg(name):
@@ -93,27 +86,27 @@ def get_bg(name):
 
 def make_img(h,a,hs,as_,lg,minute,scorer,h_id,a_id,player_name,espn_id):
     bg=get_bg(h)
-    W,H=1080,1350 # 4:5 = FB pushes more for big teams
+    W,H=1080,1350
     img=Image.new("RGB",(W,H),bg)
     d=ImageDraw.Draw(img)
     try:
         fb=ImageFont.truetype("DejaVuSans-Bold.ttf", 95)
         fm=ImageFont.truetype("DejaVuSans-Bold.ttf", 48)
-        fs=ImageFont.truetype("DejaVuSans.ttf", 34)
-    except: fb=fm=fs=ImageFont.load_default()
+        fs=ImageFont.truetype("DejaVuSans-Bold.ttf", 36)
+        fsmall=ImageFont.truetype("DejaVuSans.ttf", 30)
+    except: fb=fm=fs=fsmall=ImageFont.load_default()
 
-    d.rounded_rectangle([30,30,W-30,95], radius=15, fill=(255,255,255))
-    d.text((50,45), f"{lg} • {minute}", font=fs, fill=(0,0,0))
+    # BRAND TOP 🟢
+    d.rounded_rectangle([30,20,W-30,85], radius=20, fill=(0,255,100))
+    d.text((50,30), f"Unfiltered Scores 🟢 • {lg}", font=fs, fill=(0,0,0))
+    d.text((750,30), minute, font=fs, fill=(0,0,0))
 
-    # REAL SCORER PHOTO - BIG CENTER
     real_photo = get_real_scorer_photo(player_name, espn_id)
     if real_photo:
         real_photo=real_photo.resize((520,520))
-        # white circle behind
         d.ellipse([270,110,810,650], fill=(255,255,255))
         img.paste(real_photo,(280,120),real_photo)
 
-    # BADGES
     def badge(tid,x):
         if not tid: return
         b=dl(f"https://a.espncdn.com/i/teamlogos/soccer/500/{tid}.png")
@@ -131,9 +124,13 @@ def make_img(h,a,hs,as_,lg,minute,scorer,h_id,a_id,player_name,espn_id):
 
     if scorer:
         for i,ln in enumerate(textwrap.wrap(scorer,40)[:3]):
-            d.text((60,870+i*48), ln, font=fs, fill=(255,255,255))
+            d.text((60,870+i*48), ln, font=fsmall, fill=(255,255,255))
 
-    d.text((60,1270), f"⚽ {player_name} • Unfiltered Scores 🟢", font=fs, fill=(255,255,255))
+    # BRAND BOTTOM 🟢
+    d.rounded_rectangle([30,1240,W-30,1320], radius=20, fill=(0,255,100))
+    d.text((50,1255), f"Unfiltered Scores 🟢 LIVE • {player_name}", font=fs, fill=(0,0,0))
+    d.ellipse([1000,110,1050,160], fill=(0,255,100))
+
     path="/tmp/m.png"
     img.save(path)
     return path
@@ -175,7 +172,7 @@ def main():
 
     live=[e for e in all_ev if e["competitions"][0]["status"]["type"]["name"] in ["STATUS_IN_PROGRESS","STATUS_HALFTIME"]]
     if not live: live=all_ev[:12]
-    print(f"V29 LIVE:{len(live)}")
+    print(f"V30 LIVE:{len(live)} - Unfiltered Scores 🟢")
 
     sums={}
     with ThreadPoolExecutor(max_workers=10) as ex:
@@ -203,11 +200,12 @@ def main():
         details=summ["d"]
         m=re.search(r"(\d+)'", short); minute=int(m.group(1)) if m else 0
 
-        last=st["last"].get(ev_id,"0-0")
+        # FIXED: Safe get for 'last' - no more KeyError
+        last=st.get("last",{}).get(ev_id,"0-0")
         if status in ["STATUS_IN_PROGRESS","STATUS_HALFTIME"] and last!=f"{hs}-{as_}":
             if not (last=="0-0" and hs=="0" and as_=="0"):
                 gid=f"{ev_id}_{hs}-{as_}"
-                if gid not in st["goals"]:
+                if gid not in st.get("goals",{}):
                     scorer_txt, pid, pname = f"GOAL! {hs}-{as_}", None, "Unknown"
                     for d in details[-5:]:
                         if "goal" in str(d.get("type","")).lower():
@@ -215,16 +213,15 @@ def main():
                             pid=d.get("athlete",{}).get("id")
                             pname=d.get("athlete",{}).get("displayName","") or scorer_txt.split(" - ")[0][:20]
                             break
-                    # Extract real name from text like "Vini Jr. - Goal"
                     if not pname or pname=="Unknown":
                         if " - " in scorer_txt: pname=scorer_txt.split(" - ")[0].split("(")[0].strip()
 
                     img=make_img(hn,an,hs,as_,lg,f"{minute}' GOAL",scorer_txt,hid,aid,pname,pid)
-                    if post(f"⚽ GOAL! {minute}' 🟢 {pname}\n\n{lg}\n{hn} {hs} - {as_} {an}\n\n{scorer_txt}\n\nLIVE 🟢", img):
-                        st["goals"][gid]=1; posted+=1
-        st["last"][ev_id]=f"{hs}-{as_}"
+                    if post(f"⚽ GOAL! {minute}' 🟢 {pname}\n\n{lg}\n{hn} {hs} - {as_} {an}\n\n{scorer_txt}\n\nUnfiltered Scores 🟢 LIVE\n#UnfilteredScores 🟢", img):
+                        st.setdefault("goals",{})[gid]=1; posted+=1
+        st.setdefault("last",{})[ev_id]=f"{hs}-{as_}"
 
-    print(f"V29 DONE {posted}")
+    print(f"V30 DONE {posted} - Unfiltered Scores 🟢")
     save_state(st)
 
 if __name__=="__main__": main()
