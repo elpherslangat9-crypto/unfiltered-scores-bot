@@ -1,57 +1,26 @@
-name: Live Scores Bot - Real Scorer Photo
-
+name: Live Football
 on:
   schedule:
-    - cron: '* * * * *'  # EVERY 1 MINUTE - FASTEST
-  workflow_dispatch:  # Manual run button
-
-concurrency:
-  group: live-scores
-  cancel-in-progress: true  # Don't queue, always run latest = no delay
+    - cron: "* * * * *"
+  workflow_dispatch:
 
 jobs:
-  run-bot:
+  live:
     runs-on: ubuntu-latest
-    timeout-minutes: 2  # Kill if stuck, start next fast
-    
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          # FIXED: Removed cache: 'pip' that was causing Error: No file in [**/requirements.txt]
-          # IMPORTANT: This was your only error in screenshot
-
-      - name: Install dependencies - FAST
-        run: |
-          pip install --quiet requests pillow
-
-      - name: Run V29 Bot - Real Scorer Photo
+          python-version: "3.11"
+      - run: pip install requests pillow
+      - run: python bot.py
         env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
           PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
-        run: |
-          python bot.py
-
       - name: Commit state - NO DELAY
         run: |
-          git config user.name "Unfiltered Bot"
-          git config user.email "bot@unfilteredscores.com"
+          git config user.name "bot"
+          git config user.email "bot@bot.com"
           git add posted_state.json || true
-          # Only commit if changed - prevents empty commit error
-          if ! git diff --cached --quiet; then
-            git commit -m "⚽ state update $(date -u +'%H:%M:%S') - Unfiltered Scores 🟢"
-            git pull --rebase origin main || git pull --rebase origin master || true
-            git push || true
-          else
-            echo "No state change - Unfiltered Scores 🟢"
-          fi
-
-      - name: Keep workflow alive
-        if: always()
-        run: echo "Unfiltered Scores 🟢 V29 - Done"
+          git diff --staged --quiet || git commit -m "state"
+          git push || true
