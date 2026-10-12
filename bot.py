@@ -490,16 +490,16 @@ def run_once(st):
         last=st.get("last",{}).get(ev_id,"0-0")
         if status in ["STATUS_IN_PROGRESS","STATUS_HALFTIME"] and last!=f"{hs}-{as_}":
             if not (last=="0-0" and hs=="0" and as_=="0"):
-                gid=f"{ev_id}_{hs}-{as_}"
+                                gid=f"{ev_id}_{hs}-{as_}"
                 if gid not in st.get("goals",{}):
                     scorer_txt,pid,pname="",None,""
-                                        for d in details[-6:]:
+                    for d in details[-6:]:
                         if "goal" in str(d.get("type","")).lower() or "Goal" in str(d.get("text","")):
                             scorer_txt=d.get("text","")
                             pid=d.get("athlete",{}).get("id")
                             pname=d.get("athlete",{}).get("displayName","")
                             break
-                face=None
+                    face=None
                 minute_txt=f"{minute}'"
                 is_pen=False
                 if fast_goals:
