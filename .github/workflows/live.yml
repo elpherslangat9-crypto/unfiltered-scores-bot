@@ -1,33 +1,37 @@
-name: Live Football
+name: Unfiltered Live Bot V43
+
 on:
   schedule:
-    - cron: "* * * * *"
+    - cron: "*/3 * * * *"
   workflow_dispatch:
-concurrency:
-  group: live-football
-  cancel-in-progress: false
+
 jobs:
   live:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - run: pip install requests pillow
-      - name: Pull latest state
-        run: git pull --rebase || true
-      - run: python bot.py
+
+      - name: Install deps
+        run: |
+          pip install requests pillow
+
+      - name: Run V43 bot
         env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
           PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
-      - name: Commit state - NO DELAY
+        run: |
+          python bot.py
+
+      - name: Save state
         run: |
           git config user.name "bot"
-          git config user.email "bot@bot.com"
-          git pull --rebase || true
+          git config user.email "bot@unfiltered.com"
           git add posted_state.json || true
-          git diff --staged --quiet || git commit -m "state $(date -u)"
+          git diff --staged --quiet || git commit -m "state V43 [skip ci]"
           git push || true
