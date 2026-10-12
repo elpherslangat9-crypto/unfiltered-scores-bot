@@ -494,4 +494,121 @@ def run_once(st):
                 if gid not in st.get("goals",{}):
                     scorer_txt,pid,pname="",None,""
                     for d in details[-6:]:
-                        if "goal" in str(
+                        if "goal" in str(d.get("type","")).lower() or "Goal" in str(d.get("text","")):
+                        scorer_txt=d.get("text","")
+                        pid=d.get("athlete",{}).get("id")
+                        pname=d.get("athlete",{}).get("displayName","")
+                        break
+                face=None
+                minute_txt=f"{minute}'"
+                is_pen=False
+                if fast_goals:
+                    pname_ft, minute_ft, face_ft, incd = fast_goals[-1]
+                    if pname_ft:
+                        pname=pname_ft
+                    minute_txt=minute_ft
+                    face=face_ft
+                    if incd and "penalty" in str(incd).lower():
+                        is_pen=True
+                if not face and pname:
+                    face=get_real_scorer_photo(pname,pid)
+                if not pname:
+                    pname=f"{hn}"
+                label="PENALTY GOAL" if is_pen else f"{minute_txt} GOAL"
+                img=make_live_img(hn,an,hid,aid,f"{hs}-{as_}",lg,label,f"Unfiltered Scores - {label} {pname}",real_ground,face)
+                if post(f"GOAL! {label}! {minute_txt} - {pname}\n\n{lg}\n{hn} {hs} - {as_} {an}\n\n{scorer_txt or f'{pname} scores!'}\n\nUnfiltered Scores LIVE\n#UnfilteredScores", img):
+                    st.setdefault("goals",{})[gid]=1
+                    posted+=1
+        st.setdefault("last",{})[ev_id]=f"{hs}-{as_}"
+
+        for pname_red, minute_red, face_red in fast_reds:
+            rid=f"{ev_id}_red_{pname_red}_{minute_red}"
+            if rid not in st.get("red",{}):
+                if not face_red:
+                    face_red=get_real_scorer_photo(pname_red)
+                img=make_red_card_img(hn,an,hid,aid,f"{hs}-{as_}",lg,pname_red,minute_red,face_red,real_ground)
+                if post(f"RED CARD! {minute_red}\n\n{lg}\n{hn} {hs} - {as_} {an}\n\n{pname_red} sent off! {minute_red}\n\nUnfiltered Scores\n#UnfilteredScores", img):
+                    st.setdefault("red",{})[rid]=1
+                    posted+=1
+
+        for d in details:
+            txt=str(d.get("type","")).lower()+str(d.get("text","")).lower()
+            if "red" in txt and "card" in txt:
+                pname=d.get("athlete",{}).get("displayName","")
+                pid=d.get("athlete",{}).get("id")
+                minute_txt=d.get("clock",{}).get("displayValue","")
+                rid=f"{ev_id}_red_espn_{pname}_{minute_txt}"
+                if rid not in st.get("red",{}):
+                    face=get_real_scorer_photo(pname,pid)
+                    img=make_red_card_img(hn,an,hid,aid,f"{hs}-{as_}",lg,pname,minute_txt,face,real_ground)
+                    if post(f"RED CARD! {minute_txt}\n\n{lg}\n{hn} {hs} - {as_} {an}\n\n{d.get('text','')}\n\nUnfiltered Scores", img):
+                        st.setdefault("red",{})[rid]=1
+                        posted+=1
+
+        if status=="STATUS_HALFTIME" and ev_id not in st.get("ht",{}):
+            scorers=fast_goals if fast_goals else []
+            if not scorers:
+                scorers=[]
+                for d in details:
+                    if "goal" in str(d.get("type","")).lower():
+                        pname=d.get("athlete",{}).get("displayName","")
+                        pid=d.get("athlete",{}).get("id")
+                        mt=re.search(r"(\d+)'", d.get("clock",{}).get("displayValue","") or d.get("text",""))
+                        minute_txt=mt.group(0) if mt else ""
+                        face=get_real_scorer_photo(pname,pid)
+                        scorers.append((pname, minute_txt, face, {}))
+            img=make_ht_img_with_scorer(hn,an,hid,aid,f"{hs}-{as_}",lg,scorers,real_ground)
+            names_txt="\n".join([f"{n} {m}" for n,m,ph,*_ in scorers]) or f"{hs}-{as_}"
+            if post(f"HALFTIME\n\n{lg}\n{hn} {hs} - {as_} {an}\n\n{names_txt}\n\n{date_fmt} {time_fmt} EAT\n\nUnfiltered Scores\n#UnfilteredScores", img):
+                st.setdefault("ht",{})[ev_id]=1
+                posted+=1
+
+        if status in ["STATUS_FINAL"] and ev_id not in st.get("ft",{}):
+            img=make_live_img(hn,an,hid,aid,f"{hs}-{as_}",lg,"FT",f"Unfiltered Scores - FULL TIME",real_ground)
+            if post(f"FULL TIME\n\n{lg}\n{hn} {hs} - {as_} {an}\n\n{date_fmt}\n\nUnfiltered Scores\n#UnfilteredScores", img):
+                st.setdefault("ft",{})[ev_id]=1
+                posted+=1
+    return posted
+
+def main():
+    st=load_state()
+    total=0
+    for i in range(6):
+        print(f"10sec loop {i+1}/6")
+        total+=run_once(st)
+        save_state(st)
+        if i<5:
+            time.sleep(10)
+
+    now_ts=datetime.now().timestamp()
+    if (now_ts - st.get("last_news_time",0)) > 1200:
+        all_news=fetch_espn_news() + fetch_rss_news()
+        random.shuffle(all_news)
+        for n in all_news[:15]:
+            title_raw=n["title"][:80]
+            title_key=title_raw.strip().lower()
+            existing_lowers=[x.lower() for x in st.get("news",[])]
+            if title_key in existing_lowers:
+                continue
+            if any(title_key in ex or ex in title_key for ex in existing_lowers[-30:]):
+                continue
+            if "skysports.com/watch" in n["link"]:
+                continue
+            real=dl(n["img"])
+            if not real:
+                continue
+            img=make_news_img_CLEAR(real)
+            source_name=get_source_name(n["link"])
+            cap=f"{n['title']}\n\n{n['desc']}\n\nSource: {source_name}\n\nUnfiltered Scores\n#UnfilteredScores #FootballNews"
+            if post(cap, img):
+                st.setdefault("news",[]).append(title_raw)
+                if len(st["news"])>200:
+                    st["news"]=st["news"][-200:]
+                st["last_news_time"]=now_ts
+                total+=1
+                break
+    print(f"V39 DONE {total}")
+    save_state(st)
+
+if __name__ == "__main__":
+    main()
