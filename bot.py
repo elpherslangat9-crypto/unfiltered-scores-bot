@@ -360,19 +360,16 @@ def main():
         save_state(st)
         if i<5: time.sleep(10)
 
-    # NEWS FIXED - 20 MIN GAP + STRICT DEDUP
     now_ts=datetime.now().timestamp()
-    if (now_ts - st.get("last_news_time",0)) > 1200: # 20 mins = 3 per hour, no dup
+    if (now_ts - st.get("last_news_time",0)) > 1200:
         all_news=fetch_espn_news() + fetch_rss_news()
         random.shuffle(all_news)
         for n in all_news[:15]:
             title_raw=n["title"][:80]
             title_key=title_raw.strip().lower()
-            # strict dedup - skip if similar exists
             existing_lowers=[x.lower() for x in st.get("news",[])]
             if title_key in existing_lowers: continue
             if any(title_key in ex or ex in title_key for ex in existing_lowers[-30:]): continue
-            # skip video thumbnails that cause circle image
             if "skysports.com/watch" in n["link"]: continue
             real=dl(n["img"])
             if not real: continue
@@ -386,4 +383,5 @@ def main():
                 break
     print(f"V37 DONE {total}"); save_state(st)
 
-if __name__=="__main__"
+if __name__ == "__main__":
+    main()
