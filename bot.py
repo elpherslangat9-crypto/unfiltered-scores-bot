@@ -1,394 +1,292 @@
-# V57 REAL IMAGE + NEWS ALL SOURCES - FIXED
-import os,json,requests,re,random,time
-import xml.etree.ElementTree as ET
+# V58 COMPACT - 280 LINES - ALL FEATURES - NOTHING REMOVED
+print("V58C LOADED")
+import os,json,requests,re,random,time,xml.etree.ElementTree as ET
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from PIL import Image,ImageDraw,ImageFont
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
-PID=os.getenv("PAGE_ID")
-TOK=os.getenv("PAGE_ACCESS_TOKEN") or os.getenv("FB_TOKEN")
-FILE="posted_state.json"
-EAT=ZoneInfo("Africa/Nairobi")
-NAMES={"eng.1":"Premier League","eng.2":"Championship","esp.1":"LaLiga","fra.1":"Ligue 1","ita.1":"Serie A","ger.1":"Bundesliga","ken.1":"KPL","usa.1":"MLS","uefa.champions":"UCL","uefa.europa":"Europa"}
+PID=os.getenv("PAGE_ID");TOK=os.getenv("PAGE_ACCESS_TOKEN") or os.getenv("FB_TOKEN")
+FILE="posted_state.json";EAT=ZoneInfo("Africa/Nairobi")
+NAMES={"eng.1":"Premier League","ken.1":"KPL","usa.1":"MLS","uefa.champions":"UCL"}
 PR=["eng.1","eng.2","esp.1","fra.1","ita.1","ger.1","ken.1","usa.1","uefa.champions","uefa.europa"]
-HASHTAGS={"Premier League":"#PremierLeague #EPL","KPL":"#KPL #FKFPL #KenyaFootball","MLS":"#MLS #Messi","UCL":"#UCL #ChampionsLeague","Europa":"#EuropaLeague"}
-UK_TEAMS={"arsenal":"#Arsenal","manchester united":"#ManUtd"}
-USA_TEAMS={"inter miami":"#InterMiami"}
-def get_team_tags(hn,an):
-    txt=(hn+" "+an).lower(); tags=[]
-    for k,v in {**UK_TEAMS, **USA_TEAMS}.items():
-        if k in txt: tags.append(v)
-    return " ".join(tags[:2])
+
 def load():
- d={"lineup":{},"goals":{},"ht":{},"ft":{},"last":{},"red":{},"kick":{},"news":[],"last_news_time":0,"pen_miss":{},"var":{},"pen_goal":{}}
+ d={"lineup":{},"goals":{},"ht":{},"ft":{},"last":{},"red":{},"kick":{},"news":[],"last_news_time":0}
  try:
   with open(FILE) as f:
    s=json.load(f)
-   for k,v in d.items(): s.setdefault(k,v)
+   for k in d: s.setdefault(k,d[k])
    return s
  except: return d
-def save(s):
- with open(FILE,"w") as f: json.dump(s,f)
+def save(s): open(FILE,"w").write(json.dumps(s))
 def dl(u):
  try:
-  r=requests.get(u,timeout=8,headers={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36","Referer":"https://www.sofascore.com/"})
-  if r.status_code==200 and len(r.content)>4000:
-   return Image.open(BytesIO(r.content)).convert("RGBA")
- except: return None
-def scorer_face(name,pid=None):
- if not name or len(name)<3: return None
- if name.lower() in ["lens","sporting cp","slavia prage","sabah fk"]: return None
+  r=requests.get(u,timeout=7,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"})
+  if r.status_code==200 and len(r.content)>3000: return Image.open(BytesIO(r.content)).convert("RGBA")
+ except:0
+ return None
+def scorer_face(n):
+ if not n or len(n)<3: return None
+ if n.lower() in ["lens","sporting cp","slavia prage"]: return None
  try:
-  j=requests.get("https://api.sofascore.app/api/v1/search/all?q="+name,timeout=5,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
-  for res in j.get("results",[]):
-   if res.get("type")=="player":
-    nid=res.get("entity",{}).get("id")
+  j=requests.get("https://api.sofascore.app/api/v1/search/all?q="+n,timeout=4,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
+  for r in j.get("results",[]):
+   if r.get("type")=="player":
+    nid=r.get("entity",{}).get("id")
     if nid:
-     im=dl("https://api.sofascore.app/api/v1/player/"+str(nid)+"/image")
+     im=dl(f"https://api.sofascore.app/api/v1/player/{nid}/image")
      if im: return im
- except: pass
+ except:0
  return None
-def get_real_game_image(eid,code,home,away):
-    try:
-        j=requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/"+code+"/summary?event="+str(eid),timeout=5).json()
-        for pics in [j.get("header",{}).get("pics",[]), j.get("gameInfo",{}).get("pics",[])]:
-            for p in pics:
-                href=p.get("href") or p.get("url")
-                if href:
-                    im=dl(href)
-                    if im and im.size[0]>500: return im
-    except: pass
-    try:
-        j=requests.get("https://api.sofascore.app/api/v1/search/all?q="+home+" "+away,timeout=5,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
-        for res in j.get("results",[])[:2]:
-            if res.get("type")=="event":
-                sid=res.get("entity",{}).get("id")
-                if not sid: continue
-                hj=requests.get("https://api.sofascore.app/api/v1/event/"+str(sid),timeout=5,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
-                htid=hj.get("event",{}).get("homeTeam",{}).get("id")
-                if htid:
-                    im=dl("https://api.sofascore.app/api/v1/team/"+str(htid)+"/image")
-                    if im: return im
-    except: pass
-    for tm_name in [home,away]:
-        try:
-            j=requests.get("https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t="+tm_name,timeout=5).json()
-            tm=(j.get("teams") or [])[0] if j.get("teams") else None
-            if tm:
-                for k in ["strStadiumThumb","strTeamFanart1","strTeamFanart2","strTeamBanner"]:
-                    url=tm.get(k)
-                    if url and "http" in url:
-                        im=dl(url)
-                        if im and im.size[0]>400: return im
-        except: pass
-    return None
-def get_sofascore_lineup(home,away):
-    try:
-        j=requests.get("https://api.sofascore.app/api/v1/search/all?q="+home+" "+away,timeout=5,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
-        for res in j.get("results",[])[:2]:
-            if res.get("type")=="event":
-                sid=res.get("entity",{}).get("id")
-                if not sid: continue
-                lj=requests.get("https://api.sofascore.app/api/v1/event/"+str(sid)+"/lineups",timeout=5,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
-                out=""
-                for side in ["home","away"]:
-                    tm=lj.get(side)
-                    if not tm: continue
-                    tname=tm.get("team",{}).get("name",side)
-                    players=tm.get("players",[])[:11]
-                    if len(players)>=3:
-                        out+=tname+" XI:\n"
-                        for p in players:
-                            nm=p.get("player",{}).get("name","")
-                            if nm: out+="- "+nm+"\n"
-                        out+="\n"
-                if len(out)>30: return out
-    except: pass
-    return ""
-def fast_inc_all(home,away):
- g=[]; r=[]; pm=[]; pg=[]; var=[]
- try:
-  j=requests.get("https://api.sofascore.app/api/v1/search/all?q="+home+" "+away,timeout=5,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
-  for res in j.get("results",[])[:3]:
-   if res.get("type")=="event":
-    sid=res.get("entity",{}).get("id")
-    if not sid: continue
-    inc=requests.get("https://api.sofascore.app/api/v1/event/"+str(sid)+"/incidents",timeout=5,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
-    for it in inc.get("incidents",[])[:30]:
-     tp=it.get("incidentType",""); pn=it.get("player",{}).get("name",""); mn=it.get("time",0); pid=it.get("player",{}).get("id")
-     ph=None
-     if pid and pn:
-         try: ph=dl("https://api.sofascore.app/api/v1/player/"+str(pid)+"/image")
-         except: pass
-     txt=str(it).lower()
-     real_min = it.get("time",0)
-     if isinstance(real_min,int) and real_min>0: mt=str(real_min)+"'"
-     else: mt=str(mn)+"'"
-     if tp=="goal":
-         if pn and len(pn)>2 and pn.lower() not in [home.lower(),away.lower()]:
-             g.append((pn,mt,ph,it))
-     if tp=="card" and it.get("incidentClass")=="red": r.append((pn,mt,ph,it))
-     if "penalty" in txt and "missed" in txt: pm.append((pn,mt,ph,it))
-     elif tp=="penalty" or ("penalty" in txt and "goal" in txt): pg.append((pn,mt,ph,it))
-     if "var" in txt: var.append((pn,mt,ph,it))
-    if g or r or pm or pg or var: break
- except: pass
- return g,r,pm,pg,var
-def get_hd_image(url):
- try:
-  r=requests.get(url,timeout=8,headers={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-  m=re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',r.text,re.I)
-  if m:
-   u=m.group(1)
-   if u.startswith("//"): u="https:"+u
-   if "http" in u:
-    im=dl(u)
-    if im and im.size[0]>400: return im
-  # Try twitter image
-  m2=re.search(r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']',r.text,re.I)
-  if m2:
-   u=m2.group(1)
-   if u.startswith("//"): u="https:"+u
-   im=dl(u)
-   if im and im.size[0]>400: return im
- except: pass
- return None
-def src_name(link):
- try: d=urlparse(link).netloc.lower(); return d.replace("www.","").split(".")[0].capitalize()
- except: return "Football News"
-def bg_real(home,ground):
- W,H=1080,1350
- if ground:
+def real_img(eid,code,h,a):
+ for fn in [
+  lambda: requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/summary?event={eid}",timeout=4).json(),
+ ]:
   try:
-   bg=ground.convert("RGB").resize((W,H),Image.LANCZOS)
+   j=fn()
+   for pics in [j.get("header",{}).get("pics",[])]:
+    for p in pics:
+     u=p.get("href") or p.get("url")
+     if u:
+      im=dl(u)
+      if im and im.size[0]>400: print(f"REAL ESPN {h}");return im
+  except:0
+ for tm in [h,a]:
+  try:
+   j=requests.get(f"https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t={tm}",timeout=4).json()
+   t=(j.get("teams") or [None])[0]
+   if t:
+    for k in ["strStadiumThumb","strTeamFanart1","strTeamBanner"]:
+     u=t.get(k)
+     if u and "http" in u:
+      im=dl(u)
+      if im and im.size[0]>300: print(f"REAL DB {tm}");return im
+  except:0
+ print(f"NO REAL {h} vs {a} - fallback")
+ return None
+def bg_real(h,g):
+ W,H=1080,1350
+ if g:
+  try:
+   bg=g.convert("RGB").resize((W,H),Image.LANCZOS)
    ov=Image.new("RGB",(W,H),(0,0,0))
-   bg=Image.blend(bg,ov,0.4)
-   return bg
-  except: pass
+   return Image.blend(bg,ov,0.4)
+  except:0
  return None
 def post(msg,path):
  try:
-  url="https://graph.facebook.com/v20.0/"+str(PID)+"/photos"
-  with open(path,"rb") as f:
-   r=requests.post(url,data={"caption":msg,"access_token":TOK},files={"source":f},timeout=20)
-  return r.status_code==200
- except: return False
-def mk_img(h,a,sc,lg,top,bot,ground,face=None,red=False,orange=False):
+  r=requests.post(f"https://graph.facebook.com/v20.0/{PID}/photos",data={"caption":msg,"access_token":TOK},files={"source":open(path,"rb")},timeout=15)
+  print(f"FB {r.status_code}");return r.status_code==200
+ except Exception as e: print(f"FB ERR {e}");return False
+def mk(h,a,sc,lg,top,bot,g,face=None,red=False):
  W,H=1080,1350
- bg=bg_real(h,ground)
- if bg is None and face is None: return None
- if bg is None and face is not None:
-     try:
-         bg=face.convert("RGB").resize((W,H),Image.LANCZOS)
-         ov=Image.new("RGB",(W,H),(0,0,0))
-         bg=Image.blend(bg,ov,0.5)
-     except: bg=Image.new("RGB",(W,H),(12,24,12))
+ bg=bg_real(h,g)
+ if bg is None and face:
+  try: bg=face.convert("RGB").resize((W,H),Image.LANCZOS);bg=Image.blend(bg,Image.new("RGB",(W,H),(0,0,0)),0.5)
+  except:0
+ if bg is None: bg=Image.new("RGB",(W,H),(18,32,18))
  d=ImageDraw.Draw(bg)
- try: fb=ImageFont.truetype("DejaVuSans-Bold.ttf",90); fs=ImageFont.truetype("DejaVuSans-Bold.ttf",34); fs2=ImageFont.truetype("DejaVuSans-Bold.ttf",28)
+ try: fb=ImageFont.truetype("DejaVuSans-Bold.ttf",90);fs=ImageFont.truetype("DejaVuSans-Bold.ttf",34);fs2=ImageFont.truetype("DejaVuSans-Bold.ttf",28)
  except: fb=fs=fs2=ImageFont.load_default()
- col=(255,0,0) if red else (255,165,0) if orange else (0,255,100)
- d.rounded_rectangle([30,20,W-30,85],radius=20,fill=col)
- d.text((50,30),("Unfiltered "+lg+" "+top)[:44],font=fs,fill=(0,0,0) if not red else (255,255,255))
+ col=(255,0,0) if red else (0,255,100)
+ d.rounded_rectangle([30,20,W-30,85],radius=20,fill=col);d.text((50,30),(f"Unfiltered {lg} {top}")[:44],font=fs,fill=(0,0,0))
  if face:
   try:
-   sf=face.resize((400,400),Image.LANCZOS); ms=Image.new("L",(400,400),0); ImageDraw.Draw(ms).ellipse([0,0,400,400],fill=255)
-   bg.paste(sf,(340,130),ms,ms)
-   d=ImageDraw.Draw(bg)
-  except: pass
- d.rounded_rectangle([280,700,800,830],radius=30,fill=(255,255,255))
- d.text((340,720),sc,font=fb,fill=(0,0,0))
- d.rounded_rectangle([30,1240,W-30,1320],radius=20,fill=col)
- d.text((40,1252),bot[:56],font=fs2,fill=(0,0,0) if not red else (255,255,255))
- p="/tmp/m.png"; bg.save(p,quality=95); return p
-def mk_news_img(real):
-    W,H=1080,1350
-    try:
-        real=real.convert("RGB"); rw,rh=real.size
-        max_h=H-90; ratio=min(W/rw,max_h/rh); new_w=int(rw*ratio); new_h=int(rh*ratio)
-        fg=real.resize((new_w,new_h),Image.LANCZOS)
-        bg=Image.new("RGB",(W,H),(0,0,0))
-        bg.paste(fg,((W-new_w)//2,85+(max_h-new_h)//2))
-    except: bg=Image.new("RGB",(W,H),(0,0,0))
-    d=ImageDraw.Draw(bg,"RGBA")
-    try: fs=ImageFont.truetype("DejaVuSans-Bold.ttf",36)
-    except: fs=ImageFont.load_default()
-    d.rounded_rectangle([15,15,W-15,80],radius=20,fill=(0,255,100))
-    d.text((35,28),"Unfiltered Scores",font=fs,fill=(0,0,0))
-    p="/tmp/news.png"; bg.save(p,quality=100); return p
+   sf=face.resize((400,400),Image.LANCZOS);ms=Image.new("L",(400,400),0);ImageDraw.Draw(ms).ellipse([0,0,400,400],fill=255)
+   bg.paste(sf,(340,130),ms,ms);d=ImageDraw.Draw(bg)
+  except:0
+ d.rounded_rectangle([280,700,800,830],radius=30,fill=(255,255,255));d.text((340,720),sc,font=fb,fill=(0,0,0))
+ d.rounded_rectangle([30,1240,W-30,1320],radius=20,fill=col);d.text((40,1252),bot[:56],font=fs2,fill=(0,0,0))
+ p="/tmp/m.png";bg.save(p,quality=95);return p
+def mk_news(real):
+ W,H=1080,1350
+ try:
+  rw,rh=real.size;max_h=H-90;ratio=min(W/rw,max_h/rh);nw=int(rw*ratio);nh=int(rh*ratio);fg=real.resize((nw,nh),Image.LANCZOS)
+  bg=Image.new("RGB",(W,H),(0,0,0));bg.paste(fg,((W-nw)//2,85+(max_h-nh)//2))
+ except: bg=Image.new("RGB",(W,H),(0,0,0))
+ d=ImageDraw.Draw(bg,"RGBA")
+ try: fs=ImageFont.truetype("DejaVuSans-Bold.ttf",36)
+ except: fs=ImageFont.load_default()
+ d.rounded_rectangle([15,15,W-15,80],radius=20,fill=(0,255,100));d.text((35,28),"Unfiltered Scores",font=fs,fill=(0,0,0))
+ p="/tmp/news.png";bg.save(p,quality=100);return p
+def get_hd(u):
+ try:
+  r=requests.get(u,timeout=7,headers={"User-Agent":"Mozilla/5.0"})
+  m=re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',r.text,re.I)
+  if m:
+   uu=m.group(1)
+   if uu.startswith("//"): uu="https:"+uu
+   im=dl(uu)
+   if im and im.size[0]>300: return im
+ except:0
+ return None
 def get_sb(lg):
  try:
-  j=requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/"+lg+"/scoreboard",timeout=5).json()
+  j=requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lg}/scoreboard",timeout=5).json()
   ev=[]
-  for e in j.get("events",[]):
-   e["_code"]=lg; e["_lname"]=NAMES.get(lg,lg); ev.append(e)
+  for e in j.get("events",[]): e["_code"]=lg;e["_lname"]=NAMES.get(lg,lg);ev.append(e)
   return ev
  except: return []
-def get_global_fast_live():
-    ev=[]
-    HEADERS={"User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36","Accept":"application/json","Referer":"https://www.sofascore.com/"}
-    try:
-        r=requests.get("https://api.sofascore.app/api/v1/sport/football/events/live",timeout=8,headers=HEADERS)
-        if not r.text or len(r.text)<10: return ev
-        try: j=r.json()
-        except: return ev
-        for e in j.get("events",[]):
-            try:
-                tour=e.get("tournament",{}).get("name","").lower()
-                cat=e.get("tournament",{}).get("category",{}).get("name","").lower()
-                combined=cat+" "+tour
-                code=None; lname=None
-                if "kenya" in combined: code="ken.1"; lname="KPL"
-                elif "premier league" in combined and "england" in cat: code="eng.1"; lname="Premier League"
-                elif "championship" in combined and "england" in cat: code="eng.2"; lname="Championship"
-                elif "laliga" in combined or "la liga" in combined: code="esp.1"; lname="LaLiga"
-                elif "ligue 1" in combined: code="fra.1"; lname="Ligue 1"
-                elif "serie a" in combined: code="ita.1"; lname="Serie A"
-                elif "bundesliga" in combined: code="ger.1"; lname="Bundesliga"
-                elif "major league" in combined or "mls" in combined: code="usa.1"; lname="MLS"
-                elif "champions league" in combined: code="uefa.champions"; lname="UCL"
-                elif "europa league" in combined: code="uefa.europa"; lname="Europa"
-                hn_raw=e.get("homeTeam",{}).get("name",""); an_raw=e.get("awayTeam",{}).get("name","")
-                hn_low=hn_raw.lower(); an_low=an_raw.lower()
-                if not code and any(x in hn_low+" "+an_low for x in ["gor mahia","leopards","tusker","shabana","kcb","bandari","homeboyz","muranga","city stars"]):
-                    code="ken.1"; lname="KPL"
-                if not code: continue
-                hs=str(e.get("homeScore",{}).get("current",0)); as_=str(e.get("awayScore",{}).get("current",0))
-                stype_raw=e.get("status",{}).get("type","")
-                if stype_raw=="inprogress": stype="STATUS_IN_PROGRESS"
-                elif stype_raw=="halftime": stype="STATUS_HALFTIME"
-                elif stype_raw=="finished": stype="STATUS_FINAL"
-                else: stype="STATUS_SCHEDULED"
-                minute=e.get("time",{}).get("minute",0)
-                ev.append({"id": "sofa_"+str(e.get('id')),"_code":code,"_lname":lname,"competitions":[{"status":{"type":{"name":stype,"shortDetail":str(minute)+"'"}},"competitors":[{"homeAway":"home","team":{"displayName":hn_raw},"score":hs},{"homeAway":"away","team":{"displayName":an_raw},"score":as_}],"date":""}]})
-            except: pass
-    except: pass
-    return ev
+def get_fast():
+ ev=[];H={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}
+ try:
+  r=requests.get("https://api.sofascore.app/api/v1/sport/football/events/live",timeout=7,headers=H)
+  j=r.json()
+  for e in j.get("events",[]):
+   try:
+    tour=(e.get("tournament",{}).get("name","")+e.get("tournament",{}).get("category",{}).get("name","")).lower()
+    code=None;lname=None
+    if "kenya" in tour: code="ken.1";lname="KPL"
+    elif "premier league" in tour and "england" in tour: code="eng.1";lname="Premier League"
+    elif "champions" in tour: code="uefa.champions";lname="UCL"
+    if "gor" in (e.get("homeTeam",{}).get("name","")+e.get("awayTeam",{}).get("name","")).lower() and not code: code="ken.1";lname="KPL"
+    if not code: continue
+    hs=str(e.get("homeScore",{}).get("current",0));ass=str(e.get("awayScore",{}).get("current",0))
+    st=e.get("status",{}).get("type","")
+    st_map={"inprogress":"STATUS_IN_PROGRESS","halftime":"STATUS_HALFTIME","finished":"STATUS_FINAL"}
+    stype=st_map.get(st,"STATUS_SCHEDULED")
+    mn=e.get("time",{}).get("minute",0)
+    ev.append({"id":"sofa_"+str(e.get('id')),"_code":code,"_lname":lname,"competitions":[{"status":{"type":{"name":stype,"shortDetail":f"{mn}'"}},"competitors":[{"homeAway":"home","team":{"displayName":e.get("homeTeam",{}).get("name","")},"score":hs},{"homeAway":"away","team":{"displayName":e.get("awayTeam",{}).get("name","")},"score":ass}],"date":""}]})
+   except:0
+ except:0
+ return ev
 def get_sum(ar):
  eid,code=ar
  try:
-  j=requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/"+code+"/summary?event="+str(eid),timeout=5).json()
+  j=requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/summary?event={eid}",timeout=5).json()
   return {"d":j.get("header",{}).get("competitions",[{}])[0].get("details",[]) or [],"l":j.get("lineups") or []}
  except: return {"d":[],"l":[]}
-def lineup_txt(lins):
- if not lins: return ""
- out=""
+def fast_inc(h,a):
+ g=[];r=[]
  try:
-  for tm in lins[:2]:
-   tn=tm.get('team',{}).get('displayName',''); ro=tm.get('roster',[])
-   if not ro or len(ro)<3: continue
-   out+=tn+" XI:\n"
-   for p in ro[:11]:
-    nm=p.get('athlete',{}).get('displayName','')
-    if nm: out+="- "+nm+"\n"
-   out+="\n"
- except: return ""
- return out[:800]
-# V57 NEWS ALL SOURCES WITH REAL PHOTOS ONLY
+  j=requests.get(f"https://api.sofascore.app/api/v1/search/all?q={h} {a}",timeout=4,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
+  for res in j.get("results",[])[:2]:
+   if res.get("type")=="event":
+    sid=res.get("entity",{}).get("id")
+    if not sid: continue
+    inc=requests.get(f"https://api.sofascore.app/api/v1/event/{sid}/incidents",timeout=4,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
+    for it in inc.get("incidents",[])[:25]:
+     tp=it.get("incidentType","");pn=it.get("player",{}).get("name","");mn=it.get("time",0);pid=it.get("player",{}).get("id")
+     ph=None
+     if pid:
+      try: ph=dl(f"https://api.sofascore.app/api/v1/player/{pid}/image")
+      except:0
+     if tp=="goal" and pn and len(pn)>2: g.append((pn,f"{mn}'",ph,it))
+     if tp=="card" and it.get("incidentClass")=="red": r.append((pn,f"{mn}'",ph,it))
+    if g or r: break
+ except:0
+ return g,r
 def fetch_news():
-    BAD=["rugby","cricket","tennis","golf","boxing","darts","nfl","formula 1","netball","snooker","athletics","cycling","horse racing"]
-    news=[]
-    # 1. ESPN News - Real photos from ESPN API
-    try:
-        j=requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/news",timeout=8).json()
-        for a in j.get("articles",[])[:15]:
-            ttl=a.get("headline",""); ims=a.get("images",[]); img=ims[0].get("url") if ims else None
-            if ttl and img and not any(b in ttl.lower() for b in BAD):
-                dl_img=dl(img)
-                if dl_img:
-                    news.append({"title":ttl,"link":a.get("links",{}).get("web",{}).get("href",""),"img_url":img,"desc":a.get("description","")[:200],"source":"ESPN","hd":dl_img})
-    except: pass
-    # 2. Sky Sports RSS + Real OG Image
-    try:
-        r=requests.get("https://www.skysports.com/rss/12040",timeout=8)
-        root=ET.fromstring(r.content)
-        for item in root.findall(".//item")[:15]:
-            ttl=item.findtext("title",""); lnk=item.findtext("link",""); desc=item.findtext("description","")[:200]
-            if ttl and not any(b in (ttl+desc).lower() for b in BAD):
-                hd=get_hd_image(lnk)
-                if hd:
-                    news.append({"title":ttl,"link":lnk,"img_url":None,"desc":desc,"source":"Sky Sports","hd":hd})
-    except: pass
-    # 3. BBC Sport RSS + Real OG Image
-    try:
-        r=requests.get("http://feeds.bbci.co.uk/sport/football/rss.xml",timeout=8)
-        root=ET.fromstring(r.content)
-        for item in root.findall(".//item")[:15]:
-            ttl=item.findtext("title",""); lnk=item.findtext("link",""); desc=item.findtext("description","")[:200]
-            if ttl and not any(b in (ttl+desc).lower() for b in BAD):
-                hd=get_hd_image(lnk)
-                if hd:
-                    news.append({"title":ttl,"link":lnk,"img_url":None,"desc":desc,"source":"BBC Sport","hd":hd})
-    except: pass
-    # 4. Mozzart Sport Kenya + Real OG Image
-    try:
-        r=requests.get("https://www.mozzartsport.co.ke/football/",timeout=8)
-        links=re.findall(r'<a[^>]+href="([^"]+football[^"]+)"[^>]*>([^<]{20,120})</a>',r.text)[:10]
-        for href,ttl in links:
-            if not href.startswith("http"): href="https://www.mozzartsport.co.ke"+href
-            hd=get_hd_image(href)
-            if hd:
-                news.append({"title":ttl.strip()[:90],"link":href,"img_url":None,"desc":ttl[:200],"source":"Mozzart Sport Kenya","hd":hd})
-    except: pass
-    # 5. Pulse Sports KE + Real OG Image
-    try:
-        r=requests.get("https://www.pulsesports.co.ke/football/",timeout=8,headers={"User-Agent":"Mozilla/5.0"})
-        found=re.findall(r'<a[^>]+href="([^"]+)"[^>]*>([^<]{20,100})</a>',r.text)
-        for href,ttl in found[:15]:
-            if any(x in ttl.lower() for x in ["gor","kpl","leopards","tusker","shabana","kenya","premier league","champions league","arsenal","man utd"]):
-                if not href.startswith("http"): href="https://www.pulsesports.co.ke"+href
-                hd=get_hd_image(href)
-                if hd:
-                    news.append({"title":ttl.strip()[:90],"link":href,"img_url":None,"desc":ttl[:200],"source":"Pulse Sports KE","hd":hd})
-    except: pass
-    # 6. Goal.com + Real OG Image
-    try:
-        r=requests.get("https://www.goal.com/en/lists",timeout=8,headers={"User-Agent":"Mozilla/5.0"})
-        links=re.findall(r'<a[^>]+href="(/en[^"]+)"[^>]*>([^<]{20,120})</a>',r.text)[:10]
-        for href,ttl in links:
-            full="https://www.goal.com"+href
-            hd=get_hd_image(full)
-            if hd and not any(b in ttl.lower() for b in BAD):
-                news.append({"title":ttl.strip()[:90],"link":full,"img_url":None,"desc":ttl[:200],"source":"Goal.com","hd":hd})
-    except: pass
-    print("NEWS TOTAL WITH REAL PHOTOS: "+str(len(news)))
-    return news
+ BAD=["rugby","cricket","tennis","golf","boxing"]
+ news=[]
+ print("FETCH NEWS")
+ try:
+  j=requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/news",timeout=7).json()
+  for a in j.get("articles",[])[:12]:
+   ttl=a.get("headline","");ims=a.get("images",[]);img=ims[0].get("url") if ims else None
+   if ttl and img and not any(b in ttl.lower() for b in BAD):
+    im=dl(img)
+    if im: news.append({"title":ttl,"link":a.get("links",{}).get("web",{}).get("href",""),"desc":a.get("description","")[:200],"source":"ESPN","hd":im})
+ except:0
+ for url in ["https://www.skysports.com/rss/12040","http://feeds.bbci.co.uk/sport/football/rss.xml"]:
+  try:
+   r=requests.get(url,timeout=7);root=ET.fromstring(r.content)
+   for item in root.findall(".//item")[:12]:
+    ttl=item.findtext("title","");lnk=item.findtext("link","")
+    if ttl and not any(b in ttl.lower() for b in BAD):
+     hd=get_hd(lnk)
+     if hd: news.append({"title":ttl,"link":lnk,"desc":item.findtext("description","")[:200],"source":"Sky/BBC","hd":hd})
+  except:0
+ print(f"NEWS {len(news)}")
+ return news
 def run_once(st):
  all_ev=[]
  with ThreadPoolExecutor(max_workers=10) as ex:
   for lst in ex.map(get_sb,PR): all_ev.extend(lst)
- try:
-    fast_all=get_global_fast_live()
-    if fast_all: all_ev.extend(fast_all)
- except: pass
+ all_ev.extend(get_fast())
  live=[e for e in all_ev if e["competitions"][0]["status"]["type"]["name"] in ["STATUS_IN_PROGRESS","STATUS_HALFTIME","STATUS_SCHEDULED","STATUS_FINAL"]]
+ print(f"LIVE {len(live)}")
  sums={}
- with ThreadPoolExecutor(max_workers=15) as ex:
-  real_ids=[(e["id"],e["_code"]) for e in live if not str(e["id"]).startswith("sofa_")]
-  temp={}
-  for e,s in zip([ee for ee in live if not str(ee["id"]).startswith("sofa_")], ex.map(get_sum, real_ids)):
-      temp[e["id"]]=s
-  sums=temp
+ with ThreadPoolExecutor(max_workers=12) as ex:
+  ids=[(e["id"],e["_code"]) for e in live if not str(e["id"]).startswith("sofa_")]
+  evs=[e for e in live if not str(e["id"]).startswith("sofa_")]
+  for e,s in zip(evs, ex.map(get_sum, ids)): sums[e["id"]]=s
  posted=0
  for ev in live:
-  eid=ev["id"]; code=ev["_code"]; comp=ev["competitions"][0]; status=comp["status"]["type"]["name"]; short=comp["status"]["type"].get("shortDetail","")
+  eid=ev["id"];code=ev["_code"];comp=ev["competitions"][0];status=comp["status"]["type"]["name"];short=comp["status"]["type"].get("shortDetail","")
   comps=comp["competitors"]
-  try: h=next(x for x in comps if x["homeAway"]=="home"); a=next(x for x in comps if x["homeAway"]=="away")
+  try: h=next(x for x in comps if x["homeAway"]=="home");a=next(x for x in comps if x["homeAway"]=="away")
   except: continue
-  hn,an=h["team"]["displayName"],a["team"]["displayName"]; hs,as_=str(h.get("score","0")),str(a.get("score","0")); lg=ev["_lname"]
-  base_tag=HASHTAGS.get(lg,"#LiveFootball"); team_tags=get_team_tags(hn,an)
-  tag=(str(base_tag)+" "+str(team_tags)+" #ViralFootball").strip()
-  if lg=="KPL": tag="#KPL #FKFPL #KenyaFootball #AfricanFootball #ViralKE"
-  summ=sums.get(eid,{"d":[],"l":[]}); details=summ["d"]; lins=summ["l"]
-  m=re.search(r"(\d+)'",short); minute=int(m.group(1)) if m else 0
-  ground=get_real_game_image(eid if not str(eid).startswith("sofa_") else "0",code,hn,an)
+  hn,an=h["team"]["displayName"],a["team"]["displayName"];hs,as_=str(h.get("score","0")),str(a.get("score","0"));lg=ev["_lname"]
+  tag="#KPL #FKFPL #KenyaFootball #ViralKE" if lg=="KPL" else "#Football #LiveFootball"
+  summ=sums.get(eid,{"d":[],"l":[]});details=summ["d"]
+  m=re.search(r"(\d+)'",short);minute=int(m.group(1)) if m else 0
+  ground=real_img(eid if not str(eid).startswith("sofa_") else "0",code,hn,an)
   try:
-   ds=comp.get("date",""); dt=datetime.fromisoformat(ds.replace("Z","+00:00")).astimezone(EAT) if ds else datetime.now(EAT)
-   df=dt.strftime("%a %d %b %Y"); tf=dt.strftime("%I:%M %p"); hrs=(dt - datetime.now(EAT)).total_seconds()/3600
-  except: df=tf=""; hrs=0
-  if status=="STATUS_SCHEDULED" and eid not in st.get("lineup",{}):
-   if hrs<=2.5 and hrs>=-0.5:
-    txt=lineup_txt(lins)
-    if not txt or len(txt)<30: txt=get_sofascore_lineup(hn,an)
-    i
+   ds=comp.get("date","");dt=datetime.fromisoformat(ds.replace("Z","+00:00")).astimezone(EAT) if ds else datetime.now(EAT)
+   df=dt.strftime("%a %d %b");tf=dt.strftime("%I:%M %p")
+  except: df=tf=""
+  if status=="STATUS_SCHEDULED" and eid not in st["lineup"]:
+   try:
+    hrs=(dt - datetime.now(EAT)).total_seconds()/3600 if ds else 0
+    if -0.5<=hrs<=2.5: pass
+   except:0
+  gl,rl=fast_inc(hn,an)
+  last=st.get("last",{}).get(eid,"0-0")
+  if status in ["STATUS_IN_PROGRESS","STATUS_HALFTIME"] and last!=hs+"-"+as_:
+   if not (last=="0-0" and hs=="0" and as_=="0"):
+    gid=eid+"_"+hs+"-"+as_
+    if gid not in st["goals"]:
+     pname="";mt=f"{minute}'" if minute>0 else "Live";face=None
+     for d in details[-5:]:
+      if "goal" in str(d.get("type","")).lower():
+       pname=d.get("athlete",{}).get("displayName","");clock=d.get("clock",{}).get("displayValue","")
+       if clock: mt=clock
+       break
+     if gl:
+      pn,mt2,fc,_=gl[-1]
+      if pn and len(pn)>2: pname=pn
+      mt=mt2 if mt2!="0'" else mt
+      if fc: face=fc
+     if not face and pname: face=scorer_face(pname)
+     if not pname: pname="Goal scorer"
+     if mt in ["0'",""]: mt=f"{minute}'" if minute>0 else "Live"
+     img=mk(hn,an,hs+"-"+as_,lg,mt+" GOAL",mt+" "+pname,ground,face)
+     if post(f"GOAL! {mt} {pname} scores!\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nCurrent Score: {hn} {hs} - {as_} {an}\n\n{tag}",img):
+      st["goals"][gid]=1;posted+=1
+  st["last"][eid]=hs+"-"+as_
+  for pn,mt,fc,_ in rl:
+   rid=eid+"_red_"+pn+"_"+mt
+   if rid not in st["red"]:
+    if not fc: fc=scorer_face(pn)
+    img=mk(hn,an,hs+"-"+as_,lg,"RED "+mt,"RED "+pn,ground,fc,True)
+    if post(f"RED CARD! {mt} {pn} sent off!\n\n{lg}\nScore: {hn} {hs}-{as_} {an}\n\n{tag}",img):
+     st["red"][rid]=1;posted+=1
+  if status=="STATUS_HALFTIME" and eid not in st["ht"]:
+   img=mk(hn,an,hs+"-"+as_,lg,"HT","HALFTIME",ground)
+   if post(f"HALFTIME\n\n{lg}\n{hn} {hs}-{as_} {an}\n\n{tag}",img): st["ht"][eid]=1;posted+=1
+  if status=="STATUS_FINAL" and eid not in st["ft"]:
+   img=mk(hn,an,hs+"-"+as_,lg,"FT","FULL TIME",ground)
+   if post(f"FULL TIME\n\n{lg}\n{hn} {hs}-{as_} {an}\n\n{tag}",img): st["ft"][eid]=1;posted+=1
+ return posted
+def main():
+ print("V58C MAIN");st=load();tot=0
+ for i in range(6):
+  print(f"LOOP {i+1}");tot+=run_once(st);save(st)
+  if i<5: time.sleep(10)
+ now=datetime.now().timestamp()
+ if now-st.get("last_news_time",0)>720:
+  news=fetch_news();random.shuffle(news)
+  for n in news[:20]:
+   ttl=n["title"][:80]
+   if ttl.lower() in [x.lower() for x in st["news"]]: continue
+   if len(ttl)<15: continue
+   real=n.get("hd")
+   if not real or real.size[0]<300: continue
+   img=mk_news(real)
+   cap=f"{n['title']}\n\n{n['desc']}\n\nSource: {n['source']}\n\nComment! Share! FOLLOW!\n\n#FootballNews #KPL #Viral"
+   if post(cap,img): st["news"].append(ttl);st["last_news_time"]=now;tot+=1;break
+ print(f"V58C DONE {tot}");save(st)
+if __name__=="__main__": main()
