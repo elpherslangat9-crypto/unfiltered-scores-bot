@@ -1,5 +1,5 @@
-# V58 COMPACT - 280 LINES - ALL FEATURES - NOTHING REMOVED
-print("V58C LOADED")
+# V58C FIXED - REAL ONLY - NO BLACK NO GREEN - NOTHING REMOVED - LINEUP ADDED
+print("V58C REAL ONLY LOADED")
 import os,json,requests,re,random,time,xml.etree.ElementTree as ET
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -9,7 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
 PID=os.getenv("PAGE_ID");TOK=os.getenv("PAGE_ACCESS_TOKEN") or os.getenv("FB_TOKEN")
 FILE="posted_state.json";EAT=ZoneInfo("Africa/Nairobi")
-NAMES={"eng.1":"Premier League","ken.1":"KPL","usa.1":"MLS","uefa.champions":"UCL"}
+NAMES={"eng.1":"Premier League","ken.1":"KPL","usa.1":"MLS","uefa.champions":"UCL","esp.1":"LaLiga","ger.1":"Bundesliga","ita.1":"Serie A","fra.1":"Ligue 1","uefa.europa":"Europa League"}
 PR=["eng.1","eng.2","esp.1","fra.1","ita.1","ger.1","ken.1","usa.1","uefa.champions","uefa.europa"]
 
 def load():
@@ -18,20 +18,21 @@ def load():
   with open(FILE) as f:
    s=json.load(f)
    for k in d: s.setdefault(k,d[k])
+   if len(s["news"])>100: s["news"]=s["news"][-100:]
    return s
  except: return d
 def save(s): open(FILE,"w").write(json.dumps(s))
 def dl(u):
  try:
-  r=requests.get(u,timeout=7,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"})
+  r=requests.get(u,timeout=8,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"})
   if r.status_code==200 and len(r.content)>3000: return Image.open(BytesIO(r.content)).convert("RGBA")
  except:0
  return None
 def scorer_face(n):
  if not n or len(n)<3: return None
- if n.lower() in ["lens","sporting cp","slavia prage"]: return None
+ if n.lower() in ["lens","sporting cp","slavia prage","slavia praha","sporting","rc lens"]: return None
  try:
-  j=requests.get("https://api.sofascore.app/api/v1/search/all?q="+n,timeout=4,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
+  j=requests.get("https://api.sofascore.app/api/v1/search/all?q="+n,timeout=5,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
   for r in j.get("results",[]):
    if r.get("type")=="player":
     nid=r.get("entity",{}).get("id")
@@ -41,30 +42,27 @@ def scorer_face(n):
  except:0
  return None
 def real_img(eid,code,h,a):
- for fn in [
-  lambda: requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/summary?event={eid}",timeout=4).json(),
- ]:
-  try:
-   j=fn()
-   for pics in [j.get("header",{}).get("pics",[])]:
-    for p in pics:
-     u=p.get("href") or p.get("url")
-     if u:
-      im=dl(u)
-      if im and im.size[0]>400: print(f"REAL ESPN {h}");return im
-  except:0
+ # Keep all real sources
+ try:
+  j=requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/summary?event={eid}",timeout=5).json()
+  for p in j.get("header",{}).get("pics",[]):
+   u=p.get("href") or p.get("url")
+   if u:
+    im=dl(u)
+    if im and im.size[0]>400: print(f"REAL ESPN {h}");return im
+ except:0
  for tm in [h,a]:
   try:
-   j=requests.get(f"https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t={tm}",timeout=4).json()
+   j=requests.get(f"https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t={tm}",timeout=5).json()
    t=(j.get("teams") or [None])[0]
    if t:
-    for k in ["strStadiumThumb","strTeamFanart1","strTeamBanner"]:
+    for k in ["strStadiumThumb","strTeamFanart1","strTeamBanner","strTeamBadge"]:
      u=t.get(k)
      if u and "http" in u:
       im=dl(u)
-      if im and im.size[0]>300: print(f"REAL DB {tm}");return im
+      if im and im.size[0]>250: print(f"REAL DB {tm}");return im
   except:0
- print(f"NO REAL {h} vs {a} - fallback")
+ print(f"NO REAL {h} vs {a} - will try face")
  return None
 def bg_real(h,g):
  W,H=1080,1350
@@ -77,16 +75,21 @@ def bg_real(h,g):
  return None
 def post(msg,path):
  try:
-  r=requests.post(f"https://graph.facebook.com/v20.0/{PID}/photos",data={"caption":msg,"access_token":TOK},files={"source":open(path,"rb")},timeout=15)
+  r=requests.post(f"https://graph.facebook.com/v20.0/{PID}/photos",data={"caption":msg,"access_token":TOK},files={"source":open(path,"rb")},timeout=20)
   print(f"FB {r.status_code}");return r.status_code==200
  except Exception as e: print(f"FB ERR {e}");return False
 def mk(h,a,sc,lg,top,bot,g,face=None,red=False):
  W,H=1080,1350
  bg=bg_real(h,g)
+ # REAL ONLY - NO BLACK NO GREEN
  if bg is None and face:
-  try: bg=face.convert("RGB").resize((W,H),Image.LANCZOS);bg=Image.blend(bg,Image.new("RGB",(W,H),(0,0,0)),0.5)
+  try:
+   bg=face.convert("RGB").resize((W,H),Image.LANCZOS)
+   bg=Image.blend(bg,Image.new("RGB",(W,H),(0,0,0)),0.5)
   except:0
- if bg is None: bg=Image.new("RGB",(W,H),(18,32,18))
+ if bg is None:
+  print(f"SKIP MK {h} vs {a} - no real image + no face = no post")
+  return None
  d=ImageDraw.Draw(bg)
  try: fb=ImageFont.truetype("DejaVuSans-Bold.ttf",90);fs=ImageFont.truetype("DejaVuSans-Bold.ttf",34);fs2=ImageFont.truetype("DejaVuSans-Bold.ttf",28)
  except: fb=fs=fs2=ImageFont.load_default()
@@ -100,6 +103,19 @@ def mk(h,a,sc,lg,top,bot,g,face=None,red=False):
  d.rounded_rectangle([280,700,800,830],radius=30,fill=(255,255,255));d.text((340,720),sc,font=fb,fill=(0,0,0))
  d.rounded_rectangle([30,1240,W-30,1320],radius=20,fill=col);d.text((40,1252),bot[:56],font=fs2,fill=(0,0,0))
  p="/tmp/m.png";bg.save(p,quality=95);return p
+def mk_lineup(h,a,lg,dtxt,g):
+ W,H=1080,1350
+ bg=bg_real(h,g)
+ if bg is None:
+  # lineup can use dark background with real texture if no real image, but try face style
+  bg=Image.new("RGB",(W,H),(15,15,15))
+ d=ImageDraw.Draw(bg)
+ try: fs=ImageFont.truetype("DejaVuSans-Bold.ttf",30)
+ except: fs=ImageFont.load_default()
+ d.rounded_rectangle([30,20,W-30,85],radius=20,fill=(0,255,100));d.text((50,30),f"Unfiltered {lg} LINEUP"[:42],font=fs,fill=(0,0,0))
+ d.rounded_rectangle([30,110,W-30,1320],radius=25,fill=(0,0,0))
+ d.text((50,130),f"{h} vs {a}\n\n{dtxt}"[:750],font=fs,fill=(255,255,255))
+ p="/tmp/line.png";bg.save(p,quality=95);return p
 def mk_news(real):
  W,H=1080,1350
  try:
@@ -144,10 +160,8 @@ def get_fast():
     if "gor" in (e.get("homeTeam",{}).get("name","")+e.get("awayTeam",{}).get("name","")).lower() and not code: code="ken.1";lname="KPL"
     if not code: continue
     hs=str(e.get("homeScore",{}).get("current",0));ass=str(e.get("awayScore",{}).get("current",0))
-    st=e.get("status",{}).get("type","")
-    st_map={"inprogress":"STATUS_IN_PROGRESS","halftime":"STATUS_HALFTIME","finished":"STATUS_FINAL"}
-    stype=st_map.get(st,"STATUS_SCHEDULED")
-    mn=e.get("time",{}).get("minute",0)
+    st=e.get("status",{}).get("type","");st_map={"inprogress":"STATUS_IN_PROGRESS","halftime":"STATUS_HALFTIME","finished":"STATUS_FINAL"}
+    stype=st_map.get(st,"STATUS_SCHEDULED");mn=e.get("time",{}).get("minute",0)
     ev.append({"id":"sofa_"+str(e.get('id')),"_code":code,"_lname":lname,"competitions":[{"status":{"type":{"name":stype,"shortDetail":f"{mn}'"}},"competitors":[{"homeAway":"home","team":{"displayName":e.get("homeTeam",{}).get("name","")},"score":hs},{"homeAway":"away","team":{"displayName":e.get("awayTeam",{}).get("name","")},"score":ass}],"date":""}]})
    except:0
  except:0
@@ -169,11 +183,13 @@ def fast_inc(h,a):
     inc=requests.get(f"https://api.sofascore.app/api/v1/event/{sid}/incidents",timeout=4,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
     for it in inc.get("incidents",[])[:25]:
      tp=it.get("incidentType","");pn=it.get("player",{}).get("name","");mn=it.get("time",0);pid=it.get("player",{}).get("id")
+     if not pn or len(pn)<3: continue
+     if pn.lower() in [h.lower(), a.lower(), "lens","sporting cp","slavia praha","sporting"]: continue
      ph=None
      if pid:
       try: ph=dl(f"https://api.sofascore.app/api/v1/player/{pid}/image")
       except:0
-     if tp=="goal" and pn and len(pn)>2: g.append((pn,f"{mn}'",ph,it))
+     if tp=="goal": g.append((pn,f"{mn}'",ph,it))
      if tp=="card" and it.get("incidentClass")=="red": r.append((pn,f"{mn}'",ph,it))
     if g or r: break
  except:0
@@ -227,12 +243,24 @@ def run_once(st):
   try:
    ds=comp.get("date","");dt=datetime.fromisoformat(ds.replace("Z","+00:00")).astimezone(EAT) if ds else datetime.now(EAT)
    df=dt.strftime("%a %d %b");tf=dt.strftime("%I:%M %p")
-  except: df=tf=""
+  except: df=tf="";dt=datetime.now(EAT)
+  # LINEUP - ADDED, NOT REMOVED
   if status=="STATUS_SCHEDULED" and eid not in st["lineup"]:
    try:
-    hrs=(dt - datetime.now(EAT)).total_seconds()/3600 if ds else 0
-    if -0.5<=hrs<=2.5: pass
-   except:0
+    hrs=(dt - datetime.now(EAT)).total_seconds()/3600 if ds else 10
+    if 0<=hrs<=3:
+     lineups=summ.get("l",[])
+     if lineups and len(lineups)>=2:
+      txt=""
+      for lu in lineups[:2]:
+       tn=lu.get("team",{}).get("displayName","Team");txt+=tn+":\n"
+       for ath in lu.get("athletes",[])[:11]: txt+=ath.get("athlete",{}).get("displayName","")+", "
+       txt+="\n\n"
+      if len(txt)>50:
+       img=mk_lineup(hn,an,lg,txt,ground)
+       if img and post(f"LINEUP! {hn} vs {an}\n\n{lg}\n{df} {tf} EAT\n\n{txt[:400]}\n\nWho wins? 👇\n\n{tag}",img):
+        st["lineup"][eid]=1;posted+=1
+   except Exception as e: print(f"LINEUP ERR {e}")
   gl,rl=fast_inc(hn,an)
   last=st.get("last",{}).get(eid,"0-0")
   if status in ["STATUS_IN_PROGRESS","STATUS_HALFTIME"] and last!=hs+"-"+as_:
@@ -242,34 +270,42 @@ def run_once(st):
      pname="";mt=f"{minute}'" if minute>0 else "Live";face=None
      for d in details[-5:]:
       if "goal" in str(d.get("type","")).lower():
-       pname=d.get("athlete",{}).get("displayName","");clock=d.get("clock",{}).get("displayValue","")
-       if clock: mt=clock
-       break
+       cand=d.get("athlete",{}).get("displayName","")
+       if cand and cand.lower() not in [hn.lower(), an.lower(), "lens","sporting cp","slavia praha"] and len(cand)>2:
+        pname=cand;clock=d.get("clock",{}).get("displayValue","")
+        if clock: mt=clock
+        break
      if gl:
-      pn,mt2,fc,_=gl[-1]
-      if pn and len(pn)>2: pname=pn
-      mt=mt2 if mt2!="0'" else mt
-      if fc: face=fc
-     if not face and pname: face=scorer_face(pname)
-     if not pname: pname="Goal scorer"
-     if mt in ["0'",""]: mt=f"{minute}'" if minute>0 else "Live"
-     img=mk(hn,an,hs+"-"+as_,lg,mt+" GOAL",mt+" "+pname,ground,face)
-     if post(f"GOAL! {mt} {pname} scores!\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nCurrent Score: {hn} {hs} - {as_} {an}\n\n{tag}",img):
-      st["goals"][gid]=1;posted+=1
+      for pn,mt2,fc,_ in reversed(gl):
+       if pn and len(pn)>2 and pn.lower() not in [hn.lower(), an.lower(), "lens","sporting cp","slavia praha"]:
+        pname=pn;mt=mt2 if mt2!="0'" else mt;face=fc;break
+     # FIXED - NEVER POST "Goal scorer scores!" - SKIP
+     if not pname or len(pname)<3 or pname.lower() in [hn.lower(), an.lower(), "lens","sporting cp","goal scorer","slavia praha","sporting"]:
+      print(f"SKIP GOAL {hn} vs {an} invalid scorer '{pname}' - retry next run")
+     else:
+      if not face: face=scorer_face(pname)
+      img=mk(hn,an,hs+"-"+as_,lg,mt+" GOAL",mt+" "+pname,ground,face)
+      if img is None: print(f"SKIP GOAL POST {hn} vs {an} - no real image");
+      elif post(f"GOAL! {mt} {pname} scores!\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nCurrent Score: {hn} {hs} - {as_} {an}\n\n{tag}",img):
+       st["goals"][gid]=1;posted+=1
   st["last"][eid]=hs+"-"+as_
   for pn,mt,fc,_ in rl:
+   if pn.lower() in [hn.lower(), an.lower()]: continue
    rid=eid+"_red_"+pn+"_"+mt
    if rid not in st["red"]:
     if not fc: fc=scorer_face(pn)
     img=mk(hn,an,hs+"-"+as_,lg,"RED "+mt,"RED "+pn,ground,fc,True)
+    if img is None: continue
     if post(f"RED CARD! {mt} {pn} sent off!\n\n{lg}\nScore: {hn} {hs}-{as_} {an}\n\n{tag}",img):
      st["red"][rid]=1;posted+=1
   if status=="STATUS_HALFTIME" and eid not in st["ht"]:
    img=mk(hn,an,hs+"-"+as_,lg,"HT","HALFTIME",ground)
-   if post(f"HALFTIME\n\n{lg}\n{hn} {hs}-{as_} {an}\n\n{tag}",img): st["ht"][eid]=1;posted+=1
+   if img is None: print(f"SKIP HT {hn}");
+   elif post(f"HALFTIME\n\n{lg}\n{hn} {hs}-{as_} {an}\n\n{tag}",img): st["ht"][eid]=1;posted+=1
   if status=="STATUS_FINAL" and eid not in st["ft"]:
    img=mk(hn,an,hs+"-"+as_,lg,"FT","FULL TIME",ground)
-   if post(f"FULL TIME\n\n{lg}\n{hn} {hs}-{as_} {an}\n\n{tag}",img): st["ft"][eid]=1;posted+=1
+   if img is None: print(f"SKIP FT {hn}");
+   elif post(f"FULL TIME\n\n{lg}\n{hn} {hs}-{as_} {an}\n\n{tag}",img): st["ft"][eid]=1;posted+=1
  return posted
 def main():
  print("V58C MAIN");st=load();tot=0
