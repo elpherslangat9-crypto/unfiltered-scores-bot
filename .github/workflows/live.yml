@@ -1,14 +1,14 @@
-name: V55 KPL FAST LIVE + UCL + GLOBAL
+name: Unfiltered Live Bot V57 - Real Images Only
 
 on:
   schedule:
-    - cron: '*/3 * * * *'  # V53: Every 3 mins - KPL fast lane
-  workflow_dispatch:
+    - cron: '*/3 * * * *'  # Every 3 minutes - FAST for KPL, UCL, EPL
+  workflow_dispatch:        # Manual run button
 
 jobs:
-  live-bot:
+  live-scores:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
+    timeout-minutes: 5
     
     steps:
       - name: Checkout code
@@ -19,29 +19,43 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install deps
+      - name: Install dependencies
         run: |
-          pip install requests Pillow pytz lxml
+          python -m pip install --upgrade pip
+          pip install requests Pillow pytz
+          pip install --upgrade certifi
 
-      - name: Restore state
+      - name: Restore posted state
         uses: actions/cache@v4
         with:
           path: posted_state.json
-          key: v53-kpl-state-${{ github.run_id }}
+          key: posted-state-v57-${{ github.run_number }}
           restore-keys: |
-            v53-kpl-state-
+            posted-state-v57-
+            posted-state-
 
-      - name: Run V53 Bot
+      - name: Run bot - Real Images Only
         env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
           PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
-          FB_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}  # fallback for V53
+          FB_TOKEN: ${{ secrets.FB_TOKEN }}
         run: |
+          echo "Starting V57 Real Image Bot..."
           python bot.py
+          echo "Done"
 
-      - name: Save state
+      - name: Save posted state
         uses: actions/cache/save@v4
         if: always()
         with:
           path: posted_state.json
-          key: v53-kpl-state-${{ github.run_id }}
+          key: posted-state-v57-${{ github.run_number }}
+
+      - name: Upload logs if failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: error-logs
+          path: |
+            *.log
+            posted_state.json
