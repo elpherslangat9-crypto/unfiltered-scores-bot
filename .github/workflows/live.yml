@@ -1,16 +1,23 @@
-name: Unfiltered Live Bot V43
+name: Live V48
 
 on:
   schedule:
     - cron: "*/3 * * * *"
   workflow_dispatch:
+  push:
+    branches: [ main ]
 
 jobs:
   live:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -19,9 +26,9 @@ jobs:
 
       - name: Install deps
         run: |
-          pip install requests pillow
+          pip install requests pillow --quiet
 
-      - name: Run V43 bot
+      - name: Run V48 bot
         env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
           PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
@@ -30,8 +37,13 @@ jobs:
 
       - name: Save state
         run: |
-          git config user.name "bot"
-          git config user.email "bot@unfiltered.com"
+          git config user.name "unfiltered-bot"
+          git config user.email "bot@unfilteredscores.com"
+          git pull --rebase origin main || true
           git add posted_state.json || true
-          git diff --staged --quiet || git commit -m "state V43 [skip ci]"
-          git push || true
+          if ! git diff --staged --quiet; then
+            git commit -m "V48 state $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            git push origin main || (git pull --rebase origin main && git push origin main)
+          else
+            echo "No new state to save"
+          fi
