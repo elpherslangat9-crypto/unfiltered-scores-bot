@@ -1,44 +1,27 @@
 name: Live V51 GLOBAL FAST
+
 on:
   schedule:
-    - cron: "*/2 * * * *"
+    - cron: '*/6 * * * *'  # every 6 mins, not every 2 mins!
   workflow_dispatch:
-  push:
-    branches: [ main ]
+
+concurrency:
+  group: v51-live-global
+  cancel-in-progress: true
 
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 4
-    permissions:
-      contents: write
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
-
+          python-version: '3.11'
       - name: Install deps
-        run: pip install requests pillow --quiet
-
+        run: pip install -r requirements.txt
       - name: Run V51 GLOBAL FAST
+        run: timeout 240 python bot.py
         env:
+          FB_TOKEN: ${{ secrets.FB_TOKEN }}
           PAGE_ID: ${{ secrets.PAGE_ID }}
-          PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
-        run: python bot.py
-
-      - name: Save state FAST
-        run: |
-          git config user.name "unfiltered-bot"
-          git config user.email "bot@unfilteredscores.com"
-          git add posted_state.json || true
-          if ! git diff --cached --quiet; then
-            git commit -m "V51 state $(date -u +%Y-%m-%dT%H:%M:%SZ)"
-            git pull --rebase origin main || true
-            git push origin main || (git pull --rebase origin main && git push origin main)
-          else
-            echo "No state changes"
-          fi
