@@ -1,8 +1,8 @@
-name: Live V49
+name: Live V51 GLOBAL FAST
 
 on:
   schedule:
-    - cron: "*/3 * * * *"
+    - cron: "*/2 * * * *"
   workflow_dispatch:
   push:
     branches: [ main ]
@@ -10,9 +10,9 @@ on:
 jobs:
   live:
     runs-on: ubuntu-latest
+    timeout-minutes: 4
     permissions:
       contents: write
-    
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,25 +25,21 @@ jobs:
           python-version: "3.11"
 
       - name: Install deps
-        run: |
-          pip install requests pillow --quiet
+        run: pip install requests pillow --quiet
 
-      - name: Run V48 bot
+      - name: Run V51 GLOBAL FAST
         env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
           PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
-        run: |
-          python bot.py
+        run: python bot.py
 
-      - name: Save state
+      - name: Save state FAST
         run: |
           git config user.name "unfiltered-bot"
           git config user.email "bot@unfilteredscores.com"
           git pull --rebase origin main || true
           git add posted_state.json || true
-          if ! git diff --staged --quiet; then
-            git commit -m "V48 state $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+          if! git diff --staged --quiet; then
+            git commit -m "V51 global $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             git push origin main || (git pull --rebase origin main && git push origin main)
-          else
-            echo "No new state to save"
           fi
