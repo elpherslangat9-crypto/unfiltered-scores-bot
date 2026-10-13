@@ -1,9 +1,9 @@
-# V51 FINAL GLOBAL - ALL PHOTO SOURCES WORLDWIDE + VIRAL
+# V51 FIXED GLOBAL - ALL PHOTO SOURCES WORLDWIDE + VIRAL - NO ERROR
 import os,json,requests,re,random,time
 import xml.etree.ElementTree as ET
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from PIL import Image,ImageDraw
+from PIL import Image,ImageDraw,ImageFont
 from io import BytesIO
 from concurrent.futures import ThreadPoolExecutor
 from urllib.parse import urlparse
@@ -74,7 +74,6 @@ def scorer_face(name,pid=None):
  return None
 
 def real_photo_global(eid,code,home,away):
- # SOURCE 1-2: ESPN WORLDWIDE LIVE PICS
  try:
   j=requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/summary?event={eid}",timeout=4).json()
   for key in ["pics","header"]:
@@ -84,34 +83,18 @@ def real_photo_global(eid,code,home,away):
     if href:
      im=dl(href)
      if im and im.size[0]>400: return im
-  # ESPN news images from same match
-  arts=j.get("news",{}).get("articles",[]) or j.get("header",{}).get("news",[]) or []
-  for art in arts[:2]:
-   img=art.get("images",[{}])[0].get("url")
-   if img:
-    im=dl(img)
-    if im: return im
  except: pass
- # SOURCE 3-5: TheSportsDB GLOBAL - HOME + AWAY + FANART
  for tm_name in [home,away,home.split()[-1],away.split()[-1]]:
   try:
    j=requests.get(f"https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t={tm_name}",timeout=4).json()
    tm=(j.get("teams") or [])[0] if j.get("teams") else None
    if tm:
-    for k in ["strStadiumThumb","strTeamFanart1","strTeamFanart2","strTeamFanart3","strTeamThumb","strTeamFanart4"]:
+    for k in ["strStadiumThumb","strTeamFanart1","strTeamFanart2","strTeamFanart3","strTeamThumb"]:
      url=tm.get(k)
      if url:
       im=dl(url)
       if im and im.size[0]>300: return im
   except: pass
- # SOURCE 6: SOCCER API STADIUM
- try:
-  j=requests.get(f"https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t={home}",timeout=3).json()
-  tm=(j.get("teams") or [])[0] if j.get("teams") else None
-  if tm and tm.get("strStadiumThumb"):
-   im=dl(tm.get("strStadiumThumb"))
-   if im: return im
- except: pass
  return None
 
 def fast_inc_all(home,away):
@@ -215,10 +198,13 @@ def mk_news_img(real):
         fg=real.resize((new_w,new_h),Image.LANCZOS)
         bg=Image.new("RGB",(W,H),(0,0,0))
         bg.paste(fg,((W-new_w)//2,85+(max_h-new_h)//2))
-    except: bg=Image.new("RGB",(W,H),(0,0,0))
+    except Exception:
+        bg=Image.new("RGB",(W,H),(0,0,0))
     d=ImageDraw.Draw(bg,"RGBA")
-    try: fs=ImageFont.truetype("DejaVuSans-Bold.ttf",36)
-    except: fs=ImageFont.load_default()
+    try:
+        fs=ImageFont.truetype("DejaVuSans-Bold.ttf",36)
+    except:
+        fs=ImageFont.load_default()
     d.rounded_rectangle([15,15,W-15,80],radius=20,fill=(0,255,100))
     d.text((35,28),"Unfiltered Scores",font=fs,fill=(0,0,0))
     p="/tmp/news.png"; bg.save(p,quality=100); return p
@@ -325,12 +311,12 @@ def run_once(st):
      except: fs=ImageFont.load_default()
      d.rounded_rectangle([30,20,1050,85],radius=20,fill=(0,255,100)); d.text((50,30),f"LINEUP {lg}",font=fs,fill=(0,0,0))
      p="/tmp/m.png"; bg.save(p,quality=90)
-     if post(f"LINEUP {lg}\n\n{hn} vs {an}\n\n{df} {tf} EAT\n\n{txt}\nWho wins? Comment 👇 🔔 FOLLOW NOW!\n\n{tag}\nFollow Unfiltered Scores - UK Africa USA",p):
+     if post(f"LINEUP {lg}\n\n{hn} vs {an}\n\n{df} {tf} EAT\n\n{txt}\nWho wins? Comment 👇 🔔 FOLLOW NOW!\n\n{tag}",p):
       st.setdefault("lineup",{})[eid]=1; posted+=1
   if status=="STATUS_IN_PROGRESS" and eid not in st.get("kick",{}):
    if minute<=3:
     img=mk_img(hn,an,"0-0",lg,"KICK OFF",f"KICK OFF {hn} vs {an}",ground)
-    if post(f"🚨 KICK OFF! {lg}\n\n{hn} vs {an}\n\n{df} {tf} EAT\n\nPredict score 👇 🔔 FOLLOW - Faster than TV!\n\n{tag}",img):
+    if post(f"🚨 KICK OFF! {lg}\n\n{hn} vs {an}\n\n{df} {tf} EAT\n\nPredict score 👇 🔔 FOLLOW!\n\n{tag}",img):
      st.setdefault("kick",{})[eid]=1; posted+=1
   gl,rl,pml,pgl,varl=fast_inc_all(hn,an)
   last=st.get("last",{}).get(eid,"0-0")
@@ -351,7 +337,7 @@ def run_once(st):
      if not pname: pname=hn
      label="PENALTY" if is_pen else f"{mt} GOAL"
      img=mk_img(hn,an,f"{hs}-{as_}",lg,label,f"{label} {pname}",ground,face)
-     if post(f"🔥 GOAL! {label}! {mt} {pname}\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nWho scores next? Comment 👇 Share! 🔔 FOLLOW NOW!\n\n{tag}",img):
+     if post(f"🔥 GOAL! {label}! {mt} {pname}\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nWho scores next? Comment 👇 🔔 FOLLOW NOW!\n\n{tag}",img):
       st.setdefault("goals",{})[gid]=1; posted+=1
   st.setdefault("last",{})[eid]=f"{hs}-{as_}"
   for pn,mt,fc,it in rl:
@@ -388,7 +374,7 @@ def run_once(st):
     st.setdefault("ht",{})[eid]=1; posted+=1
   if status=="STATUS_FINAL" and eid not in st.get("ft",{}):
    img=mk_img(hn,an,f"{hs}-{as_}",lg,"FT","FULL TIME",ground)
-   if post(f"✅ FULL TIME\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nRate game 1-10 👇 FOLLOW for all results! Share worldwide! 🌍\n\n{tag}",img):
+   if post(f"✅ FULL TIME\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nRate game 1-10 👇 FOLLOW for all results! 🌍\n\n{tag}",img):
     st.setdefault("ft",{})[eid]=1; posted+=1
  return posted
 
@@ -421,10 +407,10 @@ def main():
    elif is_uk: hashtags="#PremierLeague #UKFootball #Arsenal #ManUtd #ViralUK #FootballUK"
    elif is_usa: hashtags="#MLS #Messi #USASoccer #ViralUSA #FootballUSA"
    else: hashtags="#FootballNews #WorldFootball #ViralFootball"
-   cap=f"🟢 {n['title']}\n\n{n['desc']}\n\nSource: {src}\n\nYour thoughts? Comment 👇 Share to group! 🔔 FOLLOW NOW - Fastest in UK Africa USA! 🌍\n\n{hashtags}"
+   cap=f"🟢 {n['title']}\n\n{n['desc']}\n\nSource: {src}\n\nYour thoughts? Comment 👇 Share! 🔔 FOLLOW NOW - Fastest in UK Africa USA! 🌍\n\n{hashtags}"
    if post(cap,img):
     st.setdefault("news",[]).append(ttl); st["last_news_time"]=now; tot+=1; break
- print(f"V51 FINAL DONE {tot}"); save(st)
+ print(f"V51 FIXED DONE {tot}"); save(st)
 
 if __name__=="__main__":
  main()
