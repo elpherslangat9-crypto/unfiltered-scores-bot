@@ -1,4 +1,4 @@
-# V48 FINAL - FULL LIVE PHOTO + ALL EVENTS + FOOTBALL ONLY + 🟢
+# V49 ULTIMATE - V48 FULL + NO BLUR + FOLLOWERS BOOST
 import os,json,requests,re,random,time
 import xml.etree.ElementTree as ET
 from datetime import datetime
@@ -21,6 +21,17 @@ NAMES={
 }
 PR=["eng.1","esp.1","fra.1","ita.1","ger.1","ken.1","uefa.champions","uefa.europa"]
 BIG={"real madrid":(255,255,255),"barcelona":(20,20,120),"man city":(108,171,223)}
+
+HASHTAGS={
+ "Premier League":"#PremierLeague #EPL #LiveFootball",
+ "LaLiga":"#LaLiga #LiveFootball #Spain",
+ "Serie A":"#SerieA #Calcio #LiveFootball",
+ "Bundesliga":"#Bundesliga #LiveFootball",
+ "Ligue 1":"#Ligue1 #LiveFootball",
+ "KPL":"#KPL #FKFPL #KenyaFootball",
+ "UCL":"#UCL #ChampionsLeague #LiveFootball",
+ "Europa":"#EuropaLeague #UEL #LiveFootball"
+}
 
 def load():
  d={"lineup":{},"goals":{},"ht":{},"ft":{},"last":{},"red":{},"kick":{},"news":[],"last_news_time":0,"pen_miss":{},"var":{},"pen_goal":{}}
@@ -56,8 +67,6 @@ def scorer_face(name,pid=None):
  return None
 
 def real_photo_all_sources(eid,code,home,away):
- # Try 5 sources in order so we never miss live photo
- # 1 ESPN live action pics
  try:
   j=requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/summary?event={eid}",timeout=4).json()
   pics=j.get("header",{}).get("pics") or j.get("gameInfo",{}).get("pics") or []
@@ -67,7 +76,6 @@ def real_photo_all_sources(eid,code,home,away):
     im=dl(href)
     if im and im.size[0]>300: return im
  except: pass
- # 2 TheSportsDB stadium thumb
  try:
   j=requests.get(f"https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t={home}",timeout=4).json()
   tm=(j.get("teams") or [])[0] if j.get("teams") else None
@@ -78,18 +86,12 @@ def real_photo_all_sources(eid,code,home,away):
      im=dl(url)
      if im: return im
  except: pass
- # 3 Away team stadium as fallback
  try:
   j=requests.get(f"https://www.thesportsdb.com/api/v1/json/3/searchteams.php?t={away}",timeout=4).json()
   tm=(j.get("teams") or [])[0] if j.get("teams") else None
   if tm and tm.get("strStadiumThumb"):
    im=dl(tm.get("strStadiumThumb"))
    if im: return im
- except: pass
- # 4 ESPN team logo HD
- try:
-  j=requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/teams",timeout=4).json()
-  # fallback logo search not critical
  except: pass
  return None
 
@@ -106,15 +108,12 @@ def fast_inc_all(home,away):
      tp=it.get("incidentType",""); pn=it.get("player",{}).get("name",""); mn=it.get("time",0); pid=it.get("player",{}).get("id")
      ph=None
      if pid: ph=dl(f"https://api.sofascore.app/api/v1/player/{pid}/image")
-     ic=it.get("incidentClass",""); txt=str(it).lower()
+     txt=str(it).lower()
      if tp=="goal": g.append((pn,f"{mn}'",ph,it))
-     if tp=="card" and ic=="red": r.append((pn,f"{mn}'",ph,it))
-     if tp=="penalty" or "penalty missed" in txt or "missed penalty" in txt:
-      if "missed" in txt or it.get("isLive")==False and "penalty" in txt:
-       pm.append((pn,f"{mn}'",ph,it))
-      else:
-       pg.append((pn,f"{mn}'",ph,it))
-     if "var" in txt or tp=="var": var.append((pn,f"{mn}'",ph,it))
+     if tp=="card" and it.get("incidentClass")=="red": r.append((pn,f"{mn}'",ph,it))
+     if "penalty" in txt and "missed" in txt: pm.append((pn,f"{mn}'",ph,it))
+     elif tp=="penalty" or "penalty" in txt and "goal" in txt: pg.append((pn,f"{mn}'",ph,it))
+     if "var" in txt: var.append((pn,f"{mn}'",ph,it))
     if g or r or pm or pg or var: break
  except: pass
  return g,r,pm,pg,var
@@ -164,8 +163,11 @@ def post(msg,path):
   url=f"https://graph.facebook.com/v20.0/{PID}/photos"
   with open(path,"rb") as f:
    r=requests.post(url,data={"caption":msg,"access_token":TOK},files={"source":f},timeout=20)
+  print(f"POST {r.status_code} {r.text[:200]}")
   return r.status_code==200
- except: return False
+ except Exception as e:
+  print(f"post err {e}")
+  return False
 
 def mk_img(h,a,sc,lg,top,bot,ground,face=None,red=False,orange=False):
  W,H=1080,1350
@@ -191,25 +193,23 @@ def mk_img(h,a,sc,lg,top,bot,ground,face=None,red=False,orange=False):
  d.text((40,1252),bot[:54],font=fs,fill=(0,0,0) if not red else (255,255,255))
  p="/tmp/m.png"; bg.save(p,quality=95); return p
 
+# V49 FIX - IMAGE ONLY, NO BLUR as you asked
 def mk_news_img(real):
     W,H=1080,1350
     try:
         real=real.convert("RGB")
         rw,rh=real.size
-        bg_blur=real.resize((W,H),Image.LANCZOS)
-        bg_blur=bg_blur.filter(ImageFilter.GaussianBlur(radius=18))
-        ov=Image.new("RGB",(W,H),(0,0,0))
-        bg_blur=Image.blend(bg_blur,ov,0.25)
-        max_w=W-40; max_h=H-120
-        ratio=min(max_w/rw, max_h/rh)
-        new_size=(int(rw*ratio), int(rh*ratio))
-        fg=real.resize(new_size,Image.LANCZOS)
-        x=(W-new_size[0])//2
-        y=100 + (max_h-new_size[1])//2
-        bg_blur.paste(fg,(x,y))
-        bg=bg_blur
+        max_h = H - 90
+        ratio = min(W/rw, max_h/rh)
+        new_w = int(rw*ratio)
+        new_h = int(rh*ratio)
+        fg = real.resize((new_w, new_h), Image.LANCZOS)
+        bg = Image.new("RGB", (W,H), (0,0,0))
+        x = (W - new_w)//2
+        y = 85 + (max_h - new_h)//2
+        bg.paste(fg, (x,y))
     except:
-        bg=real.resize((W,H),Image.LANCZOS) if 'real' in locals() else Image.new("RGB",(W,H),(20,20,20))
+        bg = Image.new("RGB",(W,H),(0,0,0))
     d=ImageDraw.Draw(bg,"RGBA")
     try: fs=ImageFont.truetype("DejaVuSans-Bold.ttf",36)
     except: fs=ImageFont.load_default()
@@ -312,6 +312,7 @@ def run_once(st):
   try: h=next(x for x in comps if x["homeAway"]=="home"); a=next(x for x in comps if x["homeAway"]=="away")
   except: continue
   hn,an=h["team"]["displayName"],a["team"]["displayName"]; hs,as_=str(h.get("score","0")),str(a.get("score","0")); lg=ev["_lname"]
+  tag=HASHTAGS.get(lg,"#LiveFootball #FootballNews")
   summ=sums.get(eid,{"d":[],"l":[]}); details=summ["d"]; lins=summ["l"]
   m=re.search(r"(\d+)'",short); minute=int(m.group(1)) if m else 0
   ground=real_photo_all_sources(eid,code,hn,an)
@@ -329,12 +330,12 @@ def run_once(st):
      except: fs=ImageFont.load_default()
      d.rounded_rectangle([30,20,1050,85],radius=20,fill=(0,255,100)); d.text((50,30),f"LINEUP {lg}",font=fs,fill=(0,0,0))
      p="/tmp/m.png"; bg.save(p,quality=90)
-     if post(f"LINEUP {lg}\n\n{hn} vs {an}\n\n{df} {tf} EAT\n\n{txt}Unfiltered Scores",p):
+     if post(f"LINEUP {lg}\n\n{hn} vs {an}\n\n{df} {tf} EAT\n\n{txt}\nWho wins? Predict score 👇\n\n{tag}\nUnfiltered Scores",p):
       st.setdefault("lineup",{})[eid]=1; posted+=1
   if status=="STATUS_IN_PROGRESS" and eid not in st.get("kick",{}):
    if minute<=3:
     img=mk_img(hn,an,"0-0",lg,"KICK OFF",f"KICK OFF {hn} vs {an}",ground)
-    if post(f"KICK OFF! {lg}\n\n{hn} vs {an} kicked off!\n\n{df} {tf} EAT\n\nUnfiltered Scores LIVE",img):
+    if post(f"🚨 KICK OFF! {lg}\n\n{hn} vs {an} kicked off!\n\n{df} {tf} EAT\n\nPredict the final score 👇\n\n{tag}\nUnfiltered Scores LIVE",img):
      st.setdefault("kick",{})[eid]=1; posted+=1
   gl,rl,pml,pgl,varl=fast_inc_all(hn,an)
   last=st.get("last",{}).get(eid,"0-0")
@@ -356,7 +357,8 @@ def run_once(st):
      if not pname: pname=hn
      label="PENALTY" if is_pen else f"{mt} GOAL"
      img=mk_img(hn,an,f"{hs}-{as_}",lg,label,f"{label} {pname}",ground,face)
-     if post(f"GOAL! {label}! {mt} {pname}\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nUnfiltered Scores LIVE",img):
+     # Followers booster caption
+     if post(f"🔥 GOAL! {label}! {mt} {pname}\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nWho scores next? Comment 👇\nFollow for LIVE goals!\n\n{tag}",img):
       st.setdefault("goals",{})[gid]=1; posted+=1
   st.setdefault("last",{})[eid]=f"{hs}-{as_}"
   for pn,mt,fc,it in rl:
@@ -364,36 +366,36 @@ def run_once(st):
    if rid not in st.get("red",{}):
     if not fc: fc=scorer_face(pn)
     img=mk_img(hn,an,f"{hs}-{as_}",lg,f"RED {mt}",f"RED {pn}",ground,fc,True)
-    if post(f"RED CARD! {mt}\n\n{lg}\n{hn} {hs}-{as_} {an}\n\n{pn} sent off!",img):
+    if post(f"🟥 RED CARD! {mt} {pn}\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nGame changer? Your thoughts 👇\n\n{tag}",img):
      st.setdefault("red",{})[rid]=1; posted+=1
   for pn,mt,fc,it in pml:
    rid=f"{eid}_pmiss_{pn}_{mt}"
    if rid not in st.get("pen_miss",{}):
     if not fc: fc=scorer_face(pn)
     img=mk_img(hn,an,f"{hs}-{as_}",lg,f"MISSED PEN {mt}",f"MISSED PEN {pn}",ground,fc,False,True)
-    if post(f"MISSED PENALTY! {mt}\n\n{lg}\n{hn} {hs}-{as_} {an}\n\n{pn} misses from the spot!",img):
+    if post(f"❌ MISSED PENALTY! {mt} {pn}\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nShould he have scored? 👇\n\n{tag}",img):
      st.setdefault("pen_miss",{})[rid]=1; posted+=1
   for pn,mt,fc,it in pgl:
    rid=f"{eid}_pgoal_{pn}_{mt}"
    if rid not in st.get("pen_goal",{}):
     if not fc: fc=scorer_face(pn)
     img=mk_img(hn,an,f"{hs}-{as_}",lg,f"PENALTY {mt}",f"PENALTY {pn}",ground,fc)
-    if post(f"PENALTY GOAL! {mt} {pn}\n\n{lg}\n{hn} {hs}-{as_} {an}",img):
+    if post(f"⚽ PENALTY GOAL! {mt} {pn}\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nFollow for more LIVE!\n\n{tag}",img):
      st.setdefault("pen_goal",{})[rid]=1; posted+=1
   for pn,mt,fc,it in varl:
    rid=f"{eid}_var_{pn}_{mt}"
    if rid not in st.get("var",{}):
     if not fc and pn: fc=scorer_face(pn)
     img=mk_img(hn,an,f"{hs}-{as_}",lg,f"VAR {mt}",f"VAR CHECK {pn}",ground,fc,False,True)
-    if post(f"VAR CHECK! {mt}\n\n{lg}\n{hn} {hs}-{as_} {an}\n\n{pn} - VAR review!",img):
+    if post(f"📺 VAR CHECK! {mt} {pn}\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nGoal or no goal? Comment 👇\n\n{tag}",img):
      st.setdefault("var",{})[rid]=1; posted+=1
   if status=="STATUS_HALFTIME" and eid not in st.get("ht",{}):
    img=mk_img(hn,an,f"{hs}-{as_}",lg,"HT","HALFTIME",ground)
-   if post(f"HALFTIME\n\n{lg}\n{hn} {hs}-{as_} {an}",img):
+   if post(f"⏸️ HALFTIME\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nWhat's your second half prediction? 👇\n\n{tag}",img):
     st.setdefault("ht",{})[eid]=1; posted+=1
   if status=="STATUS_FINAL" and eid not in st.get("ft",{}):
    img=mk_img(hn,an,f"{hs}-{as_}",lg,"FT","FULL TIME",ground)
-   if post(f"FULL TIME\n\n{lg}\n{hn} {hs}-{as_} {an}",img):
+   if post(f"✅ FULL TIME\n\n{lg}\n{hn} {hs}-{as_} {an}\n\nRate the game 1-10 👇\nFollow Unfiltered Scores for all results!\n\n{tag}",img):
     st.setdefault("ft",{})[eid]=1; posted+=1
  return posted
 
@@ -418,10 +420,11 @@ def main():
    if real.size[0]<400: continue
    img=mk_news_img(real)
    src=n.get("source") or src_name(n["link"])
-   cap=f"🟢 {n['title']}\n\n{n['desc']}\n\nSource: {src}"
+   # V49 - IMAGE ONLY + 🟢 + FOLLOWERS BOOST - NO BLUR
+   cap=f"🟢 {n['title']}\n\n{n['desc']}\n\nSource: {src}\n\nFollow for latest football news! 👇\n\n#FootballNews #LiveFootball #Transfers"
    if post(cap,img):
     st.setdefault("news",[]).append(ttl); st["last_news_time"]=now; tot+=1; break
- print(f"V48 DONE {tot}"); save(st)
+ print(f"V49 DONE {tot}"); save(st)
 
 if __name__=="__main__":
  main()
