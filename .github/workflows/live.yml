@@ -1,43 +1,43 @@
-name: V64.3 BURN 97 LIVE 5MIN
+name: live-kpl-5min
 
 on:
+  workflow_dispatch:
   schedule:
     - cron: '*/5 * * * *'
-  workflow_dispatch:
 
 jobs:
   post:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      
-      - uses: actions/setup-python@v5
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          
-      - name: Install
-        run: pip install requests Pillow
 
-      - name: V64.3 BURN 97/100 LEAVE 3
+      - name: Install deps
+        run: |
+          pip install requests pillow
+
+      - name: V64.9 BURN 97/100 LEAVE 3 MOMBASA FIX 5MIN
+        run: |
+          echo "V64.9 BURN MODE - TARGET 97 LEAVE 3 WITH KPL FALLBACK 5MIN"
+          echo "V64.9 NEWS ALL SOURCES FREE KPL SMART BURN WITH FALLBACK"
+          # Run the main file - make sure your py file is named main.py
+          python main.py
         env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
           PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
-          FB_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
+          FB_TOKEN: ${{ secrets.FB_TOKEN }}
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
-        run: |
-          echo "V64.3 BURN MODE - TARGET 97 LEAVE 3"
-          echo "Already used 5, will burn 92 more today"
-          if [ -f bot.py ]; then python bot.py
-          elif [ -f main.py ]; then python main.py
-          elif [ -f app.py ]; then python app.py
-          else
-            PY=$(find . -maxdepth 2 -name "*.py" -type f | head -1)
-            python $PY
-          fi
+          API_SPORTS_KEY: ${{ secrets.API_FOOTBALL_KEY }}
 
-      - name: Save State
-        uses: actions/cache@v4
-        with:
-          path: posted_state.json
-          key: posted-state-v643-${{ github.run_id }}
-          restore-keys: posted-state-v643-
+      - name: Save state
+        run: |
+          git config --global user.name "bot"
+          git config --global user.email "bot@unfiltered.com"
+          git add posted_state.json api_used_today.txt state.json || true
+          git commit -m "V64.9 state save $(date)" || true
+          git push || true
