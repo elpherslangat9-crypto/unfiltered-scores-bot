@@ -1,61 +1,60 @@
-name: Unfiltered Live Bot V58 - Real Images Only
+name: V63 LIVE KPL+UCL
 
 on:
   schedule:
-    - cron: '*/3 * * * *'
-  workflow_dispatch:
+    - cron: '*/15 * * * *'  # Every 15 mins = saves your 100 API requests for 9 UCL tonight
+  workflow_dispatch:  # Allow manual run
 
 jobs:
-  live-scores:
+  post:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    
     steps:
-      - name: Checkout code
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Python
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install deps
         run: |
-          python -m pip install --upgrade pip
-          pip install requests Pillow pytz lxml
-          echo "Installed"
+          pip install requests Pillow
+          echo "Deps installed"
 
       - name: Restore posted state
         uses: actions/cache@v4
         with:
           path: posted_state.json
-          key: posted-state-v57-${{ github.run_number }}
+          key: posted-state-v63-${{ github.run_id }}
           restore-keys: |
-            posted-state-v57-
-            posted-state-
+            posted-state-v63-
 
-      - name: Check files
-        run: |
-          ls -lh
-          echo "--- bot.py size ---"
-          wc -l bot.py
-          head -20 bot.py
-
-      - name: Run bot - Real Images Only
+      - name: Run V63 Bot - 2KPL+9UCL + News + LiveScore
         env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
           PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
-          FB_TOKEN: ${{ secrets.FB_TOKEN }}
+          FB_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
+          API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: |
-          echo "Starting V57 Real Image Bot..."
-          python -u bot.py
-          echo "Exit code: $?"
-          ls -lh posted_state.json || echo "no state yet"
-          echo "Done"
+          echo "Starting V63 - 2 KPL + 9 UCL - API $API_FOOTBALL_KEY check"
+          python main.py
+          echo "V63 DONE - API USED check log above"
 
       - name: Save posted state
-        uses: actions/cache/save@v4
-        if: always()
+        uses: actions/cache@v4
         with:
           path: posted_state.json
-          key: posted-state-v57-${{ github.run_number }}
+          key: posted-state-v63-${{ github.run_id }}
+          restore-keys: |
+            posted-state-v63-
+
+      - name: Commit state backup
+        run: |
+          git config user.name "V63 Bot"
+          git config user.email "bot@unfiltered.com"
+          if [ -f posted_state.json ]; then
+            git add posted_state.json || true
+            git commit -m "V63 state ${{ github.run_number }} - API ${{ github.run_id }}" || true
+            git push || true
+          fi
