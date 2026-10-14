@@ -2,59 +2,44 @@ name: V63 LIVE KPL+UCL
 
 on:
   schedule:
-    - cron: '*/15 * * * *'  # Every 15 mins = saves your 100 API requests for 9 UCL tonight
-  workflow_dispatch:  # Allow manual run
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
 
 jobs:
   post:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+      - run: pip install requests Pillow
 
-      - name: Install deps
-        run: |
-          pip install requests Pillow
-          echo "Deps installed"
-
-      - name: Restore posted state
-        uses: actions/cache@v4
-        with:
-          path: posted_state.json
-          key: posted-state-v63-${{ github.run_id }}
-          restore-keys: |
-            posted-state-v63-
-
-      - name: Run V63 Bot - 2KPL+9UCL + News + LiveScore
+      - name: Find and Run Bot
         env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
           PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
           FB_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: |
-          echo "Starting V63 - 2 KPL + 9 UCL - API $API_FOOTBALL_KEY check"
-          python main.py
-          echo "V63 DONE - API USED check log above"
+          ls -la
+          echo "Checking files..."
+          if [ -f main.py ]; then python main.py
+          elif [ -f bot.py ]; then python bot.py
+          elif [ -f app.py ]; then python app.py
+          elif [ -f index.py ]; then python index.py
+          elif [ -f live.py ]; then python live.py
+          elif [ -f unfiltered.py ]; then python unfiltered.py
+          else
+            echo "No bot file found, searching..."
+            find . -name "*.py" -type f
+            PY=$(find . -maxdepth 2 -name "*.py" -type f | head -1)
+            echo "Running $PY"
+            python $PY
+          fi
 
-      - name: Save posted state
-        uses: actions/cache@v4
+      - uses: actions/cache@v4
         with:
           path: posted_state.json
           key: posted-state-v63-${{ github.run_id }}
-          restore-keys: |
-            posted-state-v63-
-
-      - name: Commit state backup
-        run: |
-          git config user.name "V63 Bot"
-          git config user.email "bot@unfiltered.com"
-          if [ -f posted_state.json ]; then
-            git add posted_state.json || true
-            git commit -m "V63 state ${{ github.run_number }} - API ${{ github.run_id }}" || true
-            git push || true
-          fi
+          restore-keys: posted-state-v63-
