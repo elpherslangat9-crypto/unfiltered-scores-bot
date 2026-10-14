@@ -1,8 +1,8 @@
-name: V64 LIVE KPL+UCL
+name: V64.3 BURN 97 LIVE 5MIN
 
 on:
   schedule:
-    - cron: '*/15 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -10,36 +10,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install requests Pillow
+          
+      - name: Install
+        run: pip install requests Pillow
 
-      - name: Find and Run Bot
+      - name: V64.3 BURN 97/100 LEAVE 3
         env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
           PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
           FB_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: |
-          ls -la
-          echo "Checking files..."
-          if [ -f main.py ]; then python main.py
-          elif [ -f bot.py ]; then python bot.py
+          echo "V64.3 BURN MODE - TARGET 97 LEAVE 3"
+          echo "Already used 5, will burn 92 more today"
+          if [ -f bot.py ]; then python bot.py
+          elif [ -f main.py ]; then python main.py
           elif [ -f app.py ]; then python app.py
-          elif [ -f index.py ]; then python index.py
-          elif [ -f live.py ]; then python live.py
-          elif [ -f unfiltered.py ]; then python unfiltered.py
           else
-            echo "No bot file found, searching..."
-            find . -name "*.py" -type f
             PY=$(find . -maxdepth 2 -name "*.py" -type f | head -1)
-            echo "Running $PY"
             python $PY
           fi
 
-      - uses: actions/cache@v4
+      - name: Save State
+        uses: actions/cache@v4
         with:
           path: posted_state.json
-          key: posted-state-v63-${{ github.run_id }}
-          restore-keys: posted-state-v63-
+          key: posted-state-v643-${{ github.run_id }}
+          restore-keys: posted-state-v643-
