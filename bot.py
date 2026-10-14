@@ -1,5 +1,5 @@
-# V64.4 TWO KPL TODAY BURN 97 GREEN - FINAL
-print("V64.4 TWO KPL BURN 97 GREEN LIVE")
+# V64.6 FINAL - NO LINEUP=0 BURN, LINEUP READY=BURN
+print("V64.6 TWO KPL LINEUP SMART BURN 97 GREEN")
 import os,json,requests,re,random,time
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -17,11 +17,11 @@ def api(path):
  if not API_KEY or USED>=LIMIT: print(f"LIMIT HIT {USED}/{LIMIT} STOP LEAVE 3");return None
  try:
   r=requests.get(f"https://v3.football.api-sports.io/{path}",headers={"x-apisports-key":API_KEY},timeout=7)
-  if r.status_code==200: USED+=1; print(f"API {USED}/92 BURN {path} - 2 KPL TODAY"); return r.json()
+  if r.status_code==200: USED+=1; print(f"API {USED}/92 BURN {path} - SMART"); return r.json()
  except:0
  return None
 def load():
- d={"lineup":{},"goals":{},"ht":{},"ft":{},"last":{},"red":{},"kick":{},"news":[],"last_news_time":0,"api_lineup":{},"last_api_time":0}
+ d={"lineup":{},"goals":{},"ht":{},"ft":{},"last":{},"red":{},"kick":{},"news":[],"last_news_time":0,"api_lineup":{},"last_api_time":0,"lineup_ready":False}
  try:
   with open(FILE) as f: s=json.load(f)
   for k in d: s.setdefault(k,d[k]); return s
@@ -85,30 +85,46 @@ def get_fast():
   return ev
  except: return []
 def should_use_api(live_events, st):
- now=time.time();last=st.get("last_api_time",0)
+ # BOSS RULE: LIVE always burns, LINEUP ready also burns, else 0
  for ev in live_events:
   s=ev["competitions"][0]["status"]["type"]["name"]
   if s in ["STATUS_IN_PROGRESS","STATUS_HALFTIME"]:
-   st["last_api_time"]=now; return True
+   print("USE API - LIVE NOW")
+   return True
+ # Check if game soon (within 2h) AND lineup_ready flag true
  try:
+  soon=False
   for ev in live_events:
    ds=ev["competitions"][0].get("date","")
    if not ds: continue
    dt=datetime.fromisoformat(ds.replace("Z","+00:00")).astimezone(EAT)
    hrs=(dt - datetime.now(EAT)).total_seconds()/3600
-   if 0<=hrs<=2:
-    if now-last>600:
-     st["last_api_time"]=now; return True
-    else: print(f"SKIP COOLDOWN {int((now-last)/60)}m"); return False
- except:0
+   if 0<=hrs<=2: soon=True
+  if soon and st.get("lineup_ready"):
+   print("USE API - LINEUP READY - BURN")
+   return True
+  if soon and not st.get("lineup_ready"):
+   print("NO LINEUP YET - 0 BURN - SAVING")
+   # Try ONE cheap check every 30 mins if lineup now ready
+   now=time.time()
+   if now - st.get("last_api_time",0) > 1800: # 30 min check
+    j=api("fixtures?date="+datetime.now(EAT).strftime("%Y-%m-%d"))
+    st["last_api_time"]=now
+    if j:
+     for f in j.get("response",[]):
+      if f.get("lineups") and len(f["lineups"])>0:
+       st["lineup_ready"]=True
+       print("LINEUP FOUND - WILL BURN FROM NOW")
+       return True
+   return False
+ except Exception as e: print(f"ERR {e}")
  return False
 def run_once(st):
  all_ev=[]
  with ThreadPoolExecutor(max_workers=6) as ex:
   for lst in ex.map(get_sb,["ken.1","uefa.champions","eng.1"]): all_ev.extend(lst)
  free_live=[e for e in all_ev if e["competitions"][0]["status"]["type"]["name"] in ["STATUS_IN_PROGRESS","STATUS_HALFTIME"]]
- free_soon=all_ev
- use_api=should_use_api(free_live+free_soon, st)
+ use_api=should_use_api(all_ev, st)
  api_events=[]
  if use_api:
   j=api("fixtures?live=all")
@@ -121,13 +137,12 @@ def run_once(st):
      else: continue
      h=f["teams"]["home"]["name"];a=f["teams"]["away"]["name"]
      hs=str(f["goals"]["home"] or 0);ass=str(f["goals"]["away"] or 0)
-     stt=f["fixture"]["status"]["short"]
-     st_map={"1H":"STATUS_IN_PROGRESS","2H":"STATUS_IN_PROGRESS","HT":"STATUS_HALFTIME","FT":"STATUS_FINAL","NS":"STATUS_SCHEDULED"}
+     stt=f["fixture"]["status"]["short"];st_map={"1H":"STATUS_IN_PROGRESS","2H":"STATUS_IN_PROGRESS","HT":"STATUS_HALFTIME","FT":"STATUS_FINAL","NS":"STATUS_SCHEDULED"}
      stype=st_map.get(stt,"STATUS_SCHEDULED")
      api_events.append({"id":f"apif_{f['fixture']['id']}","_code":code,"_lname":lname,"_apif_id":f["fixture"]["id"],"competitions":[{"status":{"type":{"name":stype,"shortDetail":stt}},"competitors":[{"homeAway":"home","team":{"displayName":h},"score":hs},{"homeAway":"away","team":{"displayName":a},"score":ass}],"date":f["fixture"]["date"]}]})
     except:0
-   print(f"API LIVE {len(api_events)} - 2 KPL CHECK")
- else: print(f"SKIPPED API - FREE LIVE {len(free_live)} - 2 KPL TODAY WAITING")
+   print(f"API LIVE {len(api_events)} - 2 KPL TODAY")
+ else: print(f"SKIPPED API - FREE LIVE {len(free_live)} - SMART SAVE")
  all_ev.extend(api_events); all_ev.extend(get_fast())
  live=[e for e in all_ev if e["competitions"][0]["status"]["type"]["name"] in ["STATUS_IN_PROGRESS","STATUS_HALFTIME","STATUS_SCHEDULED","STATUS_FINAL"]]
  print(f"TOTAL LIVE {len(live)} (2 KPL TODAY) API USED {USED}/92")
@@ -153,5 +168,5 @@ def run_once(st):
    if img and post(f"FULL TIME 🟢 {lg} {hn} {hs}-{as_} {an}\n\n{tag}",img): st["ft"][ev["id"]]=1;posted+=1
  return posted
 def main():
- st=load(); tot=run_once(st); save(st); print(f"V64.4 TWO KPL DONE {tot} API USED {USED}/92 LEAVE 3")
+ st=load(); tot=run_once(st); save(st); print(f"V64.6 DONE {tot} API USED {USED}/92 LEAVE 3 - SMART")
 if __name__=="__main__": main()
