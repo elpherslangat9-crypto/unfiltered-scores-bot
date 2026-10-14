@@ -1,4 +1,4 @@
-name: live-kpl-5min
+name: post
 
 on:
   workflow_dispatch:
@@ -18,15 +18,16 @@ jobs:
           python-version: '3.11'
 
       - name: Install deps
-        run: |
-          pip install requests pillow
+        run: pip install requests pillow
 
-      - name: V64.9 BURN 97/100 LEAVE 3 MOMBASA FIX 5MIN
+      - name: V64.9 BURN 97/100 LEAVE 3 MOMBOSA FIX 5MIN
         run: |
           echo "V64.9 BURN MODE - TARGET 97 LEAVE 3 WITH KPL FALLBACK 5MIN"
           echo "V64.9 NEWS ALL SOURCES FREE KPL SMART BURN WITH FALLBACK"
-          # Run the main file - make sure your py file is named main.py
-          python main.py
+          ls -la
+          FILE=$(ls *.py | head -n 1)
+          echo "Running $FILE"
+          python $FILE
         env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
           PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
