@@ -1,5 +1,5 @@
-# V64.6 FINAL - NO LINEUP=0 BURN, LINEUP READY=BURN
-print("V64.6 TWO KPL LINEUP SMART BURN 97 GREEN")
+# V64.7 FINAL - NEWS ON WITH PHOTOS - ALL SOURCES FREE - KPL FREE - NO API FOR NEWS
+print("V64.7 NEWS ALL SOURCES FREE KPL SMART BURN")
 import os,json,requests,re,random,time
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -14,14 +14,14 @@ BRAND_GREEN=(0,255,100)
 USED=0;LIMIT=92
 def api(path):
  global USED
- if not API_KEY or USED>=LIMIT: print(f"LIMIT HIT {USED}/{LIMIT} STOP LEAVE 3");return None
+ if not API_KEY or USED>=LIMIT: print(f"LIMIT HIT {USED}/{LIMIT} LEAVE 3");return None
  try:
   r=requests.get(f"https://v3.football.api-sports.io/{path}",headers={"x-apisports-key":API_KEY},timeout=7)
-  if r.status_code==200: USED+=1; print(f"API {USED}/92 BURN {path} - SMART"); return r.json()
+  if r.status_code==200: USED+=1; print(f"API {USED}/92 BURN {path}"); return r.json()
  except:0
  return None
 def load():
- d={"lineup":{},"goals":{},"ht":{},"ft":{},"last":{},"red":{},"kick":{},"news":[],"last_news_time":0,"api_lineup":{},"last_api_time":0,"lineup_ready":False}
+ d={"lineup":{},"goals":{},"ht":{},"ft":{},"last":{},"red":{},"kick":{},"news":[],"last_news_time":0,"last_api_time":0,"lineup_ready":False}
  try:
   with open(FILE) as f: s=json.load(f)
   for k in d: s.setdefault(k,d[k]); return s
@@ -29,7 +29,7 @@ def load():
 def save(s): open(FILE,"w").write(json.dumps(s))
 def dl(u):
  try:
-  r=requests.get(u,timeout=8,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"})
+  r=requests.get(u,timeout=9,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"})
   if r.status_code==200 and len(r.content)>3000: return Image.open(BytesIO(r.content)).convert("RGBA")
  except:0
  return None
@@ -59,6 +59,49 @@ def post(msg,path):
   r=requests.post(f"https://graph.facebook.com/v20.0/{PID}/photos",data={"caption":msg,"access_token":TOK},files={"source":open(path,"rb")},timeout=20)
   print(f"FB {r.status_code}");return r.status_code==200
  except Exception as e: print(f"FB ERR {e}");return False
+
+# === NEWS ALL SOURCES FREE - NO API_FOOTBALL ===
+def get_all_football_news():
+ arts=[]
+ # 1. ESPN All Soccer (free)
+ try:
+  for lg in ["eng.1","uefa.champions","esp.1","ita.1"]:
+   j=requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lg}/news",timeout=6).json()
+   for a in j.get("articles",[])[:3]:
+    img=a.get("images",[{}])[0].get("url","")
+    arts.append({"title":a.get("headline",""),"desc":a.get("description","")[:120],"img":img,"link":a.get("links",{}).get("web",{}).get("href",""),"src":"ESPN","lg":lg})
+ except:0
+ # 2. BBC Football RSS via free rss2json (free, not API football)
+ try:
+  j=requests.get("https://api.rss2json.com/v1/api.json?rss_url=http://feeds.bbci.co.uk/sport/football/rss.xml",timeout=6).json()
+  for it in j.get("items",[])[:4]:
+   arts.append({"title":it.get("title",""),"desc":it.get("description","")[:120],"img":it.get("enclosure",{}).get("link","") or it.get("thumbnail",""),"link":it.get("link",""),"src":"BBC","lg":"eng.1"})
+ except:0
+ # 3. Sky Sports Football RSS (free)
+ try:
+  j=requests.get("https://api.rss2json.com/v1/api.json?rss_url=https://www.skysports.com/rss/12040",timeout=6).json()
+  for it in j.get("items",[])[:4]:
+   arts.append({"title":it.get("title",""),"desc":it.get("description","")[:120],"img":it.get("enclosure",{}).get("link",""),"link":it.get("link",""),"src":"Sky","lg":"eng.1"})
+ except:0
+ # 4. KPL / Kenya - ESPN Kenya + filter (FREE - NO API FOOTBALL)
+ try:
+  j=requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/ken.1/news",timeout=6).json()
+  for a in j.get("articles",[])[:5]:
+   img=a.get("images",[{}])[0].get("url","")
+   arts.append({"title":a.get("headline",""),"desc":a.get("description","")[:120],"img":img,"link":a.get("links",{}).get("web",{}).get("href",""),"src":"ESPN KE","lg":"ken.1"})
+ except:0
+ # Filter only football and dedupe
+ seen=set(); out=[]
+ for a in arts:
+  t=a["title"].lower()
+  if not a["title"] or len(a["title"])<10: continue
+  if a["title"] in seen: continue
+  # football filter
+  if any(x in t for x in ["cricket","nba","nfl","rugby","tennis","golf","f1"]): continue
+  seen.add(a["title"]); out.append(a)
+ random.shuffle(out)
+ return out[:10]
+
 def get_sb(lg):
  try:
   j=requests.get(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{lg}/scoreboard",timeout=5).json()
@@ -85,13 +128,10 @@ def get_fast():
   return ev
  except: return []
 def should_use_api(live_events, st):
- # BOSS RULE: LIVE always burns, LINEUP ready also burns, else 0
  for ev in live_events:
   s=ev["competitions"][0]["status"]["type"]["name"]
   if s in ["STATUS_IN_PROGRESS","STATUS_HALFTIME"]:
-   print("USE API - LIVE NOW")
-   return True
- # Check if game soon (within 2h) AND lineup_ready flag true
+   print("USE API - LIVE NOW"); return True
  try:
   soon=False
   for ev in live_events:
@@ -100,24 +140,18 @@ def should_use_api(live_events, st):
    dt=datetime.fromisoformat(ds.replace("Z","+00:00")).astimezone(EAT)
    hrs=(dt - datetime.now(EAT)).total_seconds()/3600
    if 0<=hrs<=2: soon=True
-  if soon and st.get("lineup_ready"):
-   print("USE API - LINEUP READY - BURN")
-   return True
+  if soon and st.get("lineup_ready"): print("USE API - LINEUP READY"); return True
   if soon and not st.get("lineup_ready"):
-   print("NO LINEUP YET - 0 BURN - SAVING")
-   # Try ONE cheap check every 30 mins if lineup now ready
+   print("NO LINEUP YET - 0 BURN")
    now=time.time()
-   if now - st.get("last_api_time",0) > 1800: # 30 min check
+   if now - st.get("last_api_time",0) > 1800:
     j=api("fixtures?date="+datetime.now(EAT).strftime("%Y-%m-%d"))
     st["last_api_time"]=now
     if j:
      for f in j.get("response",[]):
-      if f.get("lineups") and len(f["lineups"])>0:
-       st["lineup_ready"]=True
-       print("LINEUP FOUND - WILL BURN FROM NOW")
-       return True
+      if f.get("lineups") and len(f["lineups"])>0: st["lineup_ready"]=True; print("LINEUP FOUND"); return True
    return False
- except Exception as e: print(f"ERR {e}")
+ except:0
  return False
 def run_once(st):
  all_ev=[]
@@ -139,14 +173,14 @@ def run_once(st):
      hs=str(f["goals"]["home"] or 0);ass=str(f["goals"]["away"] or 0)
      stt=f["fixture"]["status"]["short"];st_map={"1H":"STATUS_IN_PROGRESS","2H":"STATUS_IN_PROGRESS","HT":"STATUS_HALFTIME","FT":"STATUS_FINAL","NS":"STATUS_SCHEDULED"}
      stype=st_map.get(stt,"STATUS_SCHEDULED")
-     api_events.append({"id":f"apif_{f['fixture']['id']}","_code":code,"_lname":lname,"_apif_id":f["fixture"]["id"],"competitions":[{"status":{"type":{"name":stype,"shortDetail":stt}},"competitors":[{"homeAway":"home","team":{"displayName":h},"score":hs},{"homeAway":"away","team":{"displayName":a},"score":ass}],"date":f["fixture"]["date"]}]})
+     api_events.append({"id":f"apif_{f['fixture']['id']}","_code":code,"_lname":lname,"competitions":[{"status":{"type":{"name":stype,"shortDetail":stt}},"competitors":[{"homeAway":"home","team":{"displayName":h},"score":hs},{"homeAway":"away","team":{"displayName":a},"score":ass}],"date":f["fixture"]["date"]}]})
     except:0
-   print(f"API LIVE {len(api_events)} - 2 KPL TODAY")
- else: print(f"SKIPPED API - FREE LIVE {len(free_live)} - SMART SAVE")
+ else: print(f"SKIPPED API - FREE LIVE {len(free_live)} - SMART")
  all_ev.extend(api_events); all_ev.extend(get_fast())
  live=[e for e in all_ev if e["competitions"][0]["status"]["type"]["name"] in ["STATUS_IN_PROGRESS","STATUS_HALFTIME","STATUS_SCHEDULED","STATUS_FINAL"]]
- print(f"TOTAL LIVE {len(live)} (2 KPL TODAY) API USED {USED}/92")
+ print(f"TOTAL LIVE {len(live)} API USED {USED}/92")
  posted=0
+ # LIVE GOALS
  for ev in live:
   comp=ev["competitions"][0];status=comp["status"]["type"]["name"];comps=comp["competitors"]
   try: h=next(x for x in comps if x["homeAway"]=="home");a=next(x for x in comps if x["homeAway"]=="away")
@@ -166,7 +200,24 @@ def run_once(st):
   if status=="STATUS_FINAL" and ev["id"] not in st["ft"]:
    img=mk(hn,an,hs+"-"+as_,lg,"FT","FULL TIME",ground)
    if img and post(f"FULL TIME 🟢 {lg} {hn} {hs}-{as_} {an}\n\n{tag}",img): st["ft"][ev["id"]]=1;posted+=1
+ # NEWS WITH PHOTOS - FREE - NO API FOOTBALL - ALL SOURCES
+ now=time.time()
+ if now - st.get("last_news_time",0) > 1800: # 30 mins
+  news=get_all_football_news()
+  print(f"NEWS ALL SOURCES {len(news)} FREE NO API")
+  for n in news[:2]: # post 2 max per run
+   if n["title"] in st["news"]: continue
+   # KPL news free too
+   lg_tag="KPL" if n["lg"]=="ken.1" else "FOOTBALL"
+   tag="#KPL #FKFPL #Kenya 🟢" if n["lg"]=="ken.1" else "#FootballNews #ViralKE 🟢"
+   gimg=dl(n["img"]) if n["img"] else real_img(n["title"][:10],n["src"])
+   if not gimg: gimg=real_img("NEWS",n["src"])
+   img=mk(n["src"],lg_tag,n["title"][:20],lg_tag,"NEWS",n["title"][:40],gimg)
+   if img and post(f"🟢 {n['title']}\n\n{n['desc']}\n\nSource: {n['src']} {tag}\n{n['link']}",img):
+    st["news"].append(n["title"]); posted+=1
+    if len(st["news"])>200: st["news"]=st["news"][-100:]
+  st["last_news_time"]=now
  return posted
 def main():
- st=load(); tot=run_once(st); save(st); print(f"V64.6 DONE {tot} API USED {USED}/92 LEAVE 3 - SMART")
+ st=load(); tot=run_once(st); save(st); print(f"V64.7 DONE {tot} API {USED}/92 LEAVE 3 NEWS ON FREE")
 if __name__=="__main__": main()
