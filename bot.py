@@ -1,5 +1,5 @@
-# V64.3 BURN MODE 97/100 - BRAND GREEN
-print("V64.3 BURN 97 GREEN LIVE")
+# V64.4 TWO KPL TODAY BURN 97 GREEN - FINAL
+print("V64.4 TWO KPL BURN 97 GREEN LIVE")
 import os,json,requests,re,random,time
 from datetime import datetime
 from zoneinfo import ZoneInfo
@@ -11,13 +11,13 @@ API_KEY=os.getenv("API_FOOTBALL_KEY")
 FILE="posted_state.json";EAT=ZoneInfo("Africa/Nairobi")
 NAMES={"eng.1":"Premier League","ken.1":"KPL","uefa.champions":"UCL"}
 BRAND_GREEN=(0,255,100)
-USED=0;LIMIT=92 # BURN MODE - YOU HAVE 5 USED, LEAVE 3 = 92 LEFT TO BURN
+USED=0;LIMIT=92
 def api(path):
  global USED
- if not API_KEY or USED>=LIMIT: print(f"LIMIT HIT {USED}/{LIMIT} STOP - LEAVE 3");return None
+ if not API_KEY or USED>=LIMIT: print(f"LIMIT HIT {USED}/{LIMIT} STOP LEAVE 3");return None
  try:
   r=requests.get(f"https://v3.football.api-sports.io/{path}",headers={"x-apisports-key":API_KEY},timeout=7)
-  if r.status_code==200: USED+=1; print(f"API {USED}/92 BURN {path}"); return r.json()
+  if r.status_code==200: USED+=1; print(f"API {USED}/92 BURN {path} - 2 KPL TODAY"); return r.json()
  except:0
  return None
 def load():
@@ -33,18 +33,6 @@ def dl(u):
   if r.status_code==200 and len(r.content)>3000: return Image.open(BytesIO(r.content)).convert("RGBA")
  except:0
  return None
-def scorer_face(n):
- if not n or len(n)<3: return None
- try:
-  j=requests.get("https://api.sofascore.app/api/v1/search/all?q="+n,timeout=5,headers={"User-Agent":"Mozilla/5.0","Referer":"https://www.sofascore.com/"}).json()
-  for r in j.get("results",[]):
-   if r.get("type")=="player":
-    nid=r.get("entity",{}).get("id")
-    if nid:
-     im=dl(f"https://api.sofascore.app/api/v1/player/{nid}/image")
-     if im: return im
- except:0
- return None
 def real_img(h,a):
  try:
   im=dl(f"https://picsum.photos/seed/{h[:3]}{a[:3]}/1080/1350")
@@ -55,12 +43,7 @@ def mk(h,a,sc,lg,top,bot,g,face=None,red=False):
  W,H=1080,1350
  bg=None
  if g:
-  try:
-   bg=g.convert("RGB").resize((W,H),Image.LANCZOS)
-   ov=Image.new("RGB",(W,H),(0,0,0)); bg=Image.blend(bg,ov,0.45)
-  except:0
- if bg is None and face:
-  try: bg=face.convert("RGB").resize((W,H),Image.LANCZOS);bg=Image.blend(bg,Image.new("RGB",(W,H),(0,0,0)),0.5)
+  try: bg=g.convert("RGB").resize((W,H),Image.LANCZOS);ov=Image.new("RGB",(W,H),(0,0,0));bg=Image.blend(bg,ov,0.45)
   except:0
  if bg is None: bg=Image.new("RGB",(W,H),(12,12,12))
  d=ImageDraw.Draw(bg)
@@ -68,11 +51,6 @@ def mk(h,a,sc,lg,top,bot,g,face=None,red=False):
  except: fb=fs=fs2=ImageFont.load_default()
  header_col=BRAND_GREEN if not red else (255,0,0)
  d.rounded_rectangle([30,20,W-30,85],radius=20,fill=header_col);d.text((50,30),(f"Unfiltered {lg} {top}")[:44],font=fs,fill=(0,0,0))
- if face:
-  try:
-   sf=face.resize((400,400),Image.LANCZOS);ms=Image.new("L",(400,400),0);ImageDraw.Draw(ms).ellipse([0,0,400,400],fill=255)
-   bg.paste(sf,(340,130),ms,ms);d=ImageDraw.Draw(bg)
-  except:0
  d.rounded_rectangle([280,700,800,830],radius=30,fill=(255,255,255));d.text((340,720),sc,font=fb,fill=(0,0,0))
  d.rounded_rectangle([30,1240,W-30,1320],radius=20,fill=header_col);d.text((40,1252),bot[:56],font=fs2,fill=(0,0,0))
  p="/tmp/m.png";bg.save(p,quality=95);return p
@@ -111,7 +89,7 @@ def should_use_api(live_events, st):
  for ev in live_events:
   s=ev["competitions"][0]["status"]["type"]["name"]
   if s in ["STATUS_IN_PROGRESS","STATUS_HALFTIME"]:
-   st["last_api_time"]=now; return True # EVERY 5 MIN WHEN LIVE - BURN
+   st["last_api_time"]=now; return True
  try:
   for ev in live_events:
    ds=ev["competitions"][0].get("date","")
@@ -119,10 +97,9 @@ def should_use_api(live_events, st):
    dt=datetime.fromisoformat(ds.replace("Z","+00:00")).astimezone(EAT)
    hrs=(dt - datetime.now(EAT)).total_seconds()/3600
    if 0<=hrs<=2:
-    if now-last>600: # 10 MIN ONLY FOR LINEUP - BURN FASTER
+    if now-last>600:
      st["last_api_time"]=now; return True
-    else:
-     print(f"SKIP COOLDOWN {int((now-last)/60)}m <10m"); return False
+    else: print(f"SKIP COOLDOWN {int((now-last)/60)}m"); return False
  except:0
  return False
 def run_once(st):
@@ -149,12 +126,11 @@ def run_once(st):
      stype=st_map.get(stt,"STATUS_SCHEDULED")
      api_events.append({"id":f"apif_{f['fixture']['id']}","_code":code,"_lname":lname,"_apif_id":f["fixture"]["id"],"competitions":[{"status":{"type":{"name":stype,"shortDetail":stt}},"competitors":[{"homeAway":"home","team":{"displayName":h},"score":hs},{"homeAway":"away","team":{"displayName":a},"score":ass}],"date":f["fixture"]["date"]}]})
     except:0
-   print(f"API LIVE {len(api_events)}")
- else:
-  print(f"SKIPPED API SAVED - FREE LIVE {len(free_live)}")
+   print(f"API LIVE {len(api_events)} - 2 KPL CHECK")
+ else: print(f"SKIPPED API - FREE LIVE {len(free_live)} - 2 KPL TODAY WAITING")
  all_ev.extend(api_events); all_ev.extend(get_fast())
  live=[e for e in all_ev if e["competitions"][0]["status"]["type"]["name"] in ["STATUS_IN_PROGRESS","STATUS_HALFTIME","STATUS_SCHEDULED","STATUS_FINAL"]]
- print(f"TOTAL LIVE {len(live)} API USED {USED}/92")
+ print(f"TOTAL LIVE {len(live)} (2 KPL TODAY) API USED {USED}/92")
  posted=0
  for ev in live:
   comp=ev["competitions"][0];status=comp["status"]["type"]["name"];comps=comp["competitors"]
@@ -177,5 +153,5 @@ def run_once(st):
    if img and post(f"FULL TIME 🟢 {lg} {hn} {hs}-{as_} {an}\n\n{tag}",img): st["ft"][ev["id"]]=1;posted+=1
  return posted
 def main():
- st=load(); tot=run_once(st); save(st); print(f"V64.3 DONE {tot} API USED {USED}/92 LEAVE 3")
+ st=load(); tot=run_once(st); save(st); print(f"V64.4 TWO KPL DONE {tot} API USED {USED}/92 LEAVE 3")
 if __name__=="__main__": main()
