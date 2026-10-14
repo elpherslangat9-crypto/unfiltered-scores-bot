@@ -1,44 +1,50 @@
-name: post
+name: Unfiltered Live V64.9 UNRESTRICTED
 
 on:
-  workflow_dispatch:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/2 * * * *'  # Every 2 mins - UNRESTRICTED API
+  workflow_dispatch:
 
 jobs:
-  post:
+  live:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
+      - uses: actions/checkout@v4
+      
+      - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
       - name: Install deps
-        run: pip install requests pillow
-
-      - name: V64.9 BURN 97/100 LEAVE 3 MOMBOSA FIX 5MIN
         run: |
-          echo "V64.9 BURN MODE - TARGET 97 LEAVE 3 WITH KPL FALLBACK 5MIN"
-          echo "V64.9 NEWS ALL SOURCES FREE KPL SMART BURN WITH FALLBACK"
+          pip install requests Pillow
+          echo "Files in repo:"
           ls -la
-          FILE=$(ls *.py | head -n 1)
-          echo "Running $FILE"
-          python $FILE
+          echo "--- Python files ---"
+          find . -name "*.py" -type f
+
+      - name: Find and Run Bot
         env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
           PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
           FB_TOKEN: ${{ secrets.FB_TOKEN }}
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
-          API_SPORTS_KEY: ${{ secrets.API_FOOTBALL_KEY }}
-
-      - name: Save state
         run: |
-          git config --global user.name "bot"
-          git config --global user.email "bot@unfiltered.com"
-          git add posted_state.json api_used_today.txt state.json || true
-          git commit -m "V64.9 state save $(date)" || true
-          git push || true
+          echo "Searching for main.py or bot file..."
+          if [ -f "main.py" ]; then
+            echo "✅ Found main.py - running"
+            python main.py
+          elif [ -f "v64_8.py" ]; then
+            echo "Found v64_8.py - running"
+            python v64_8.py
+          elif [ -f "bot.py" ]; then
+            echo "Found bot.py - running"
+            python bot.py
+          elif [ -f "unfiltered.py" ]; then
+            echo "Found unfiltered.py - running"
+            python unfiltered.py
+          else
+            echo "⚠️ No main file found, trying first .py file"
+            PYFILE=$(find . -maxdepth 2 -name "*.py" | head -n 1)
+            if
