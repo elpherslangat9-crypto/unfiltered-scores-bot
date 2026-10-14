@@ -1,8 +1,8 @@
-name: Unfiltered Live V64.9 UNRESTRICTED
+name: Unfiltered Live V64.9.1 FIXED
 
 on:
   schedule:
-    - cron: '*/2 * * * *'  # Every 2 mins - UNRESTRICTED API
+    - cron: '*/2 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -19,9 +19,7 @@ jobs:
       - name: Install deps
         run: |
           pip install requests Pillow
-          echo "Files in repo:"
           ls -la
-          echo "--- Python files ---"
           find . -name "*.py" -type f
 
       - name: Find and Run Bot
@@ -31,20 +29,26 @@ jobs:
           FB_TOKEN: ${{ secrets.FB_TOKEN }}
           API_FOOTBALL_KEY: ${{ secrets.API_FOOTBALL_KEY }}
         run: |
-          echo "Searching for main.py or bot file..."
-          if [ -f "main.py" ]; then
-            echo "✅ Found main.py - running"
+          set -x
+          if [ -f main.py ]; then
+            echo "Found main.py"
             python main.py
-          elif [ -f "v64_8.py" ]; then
-            echo "Found v64_8.py - running"
+          elif [ -f v64_8.py ]; then
+            echo "Found v64_8.py"
             python v64_8.py
-          elif [ -f "bot.py" ]; then
-            echo "Found bot.py - running"
+          elif [ -f bot.py ]; then
+            echo "Found bot.py"
             python bot.py
-          elif [ -f "unfiltered.py" ]; then
-            echo "Found unfiltered.py - running"
-            python unfiltered.py
           else
-            echo "⚠️ No main file found, trying first .py file"
             PYFILE=$(find . -maxdepth 2 -name "*.py" | head -n 1)
-            if
+            echo "Trying $PYFILE"
+            python "$PYFILE"
+          fi
+
+      - name: Save state
+        run: |
+          git config --global user.name "Unfiltered Bot"
+          git config --global user.email "bot@unfiltered.ke"
+          git add posted_state.json || true
+          git commit -m "state update" || true
+          git push || true
