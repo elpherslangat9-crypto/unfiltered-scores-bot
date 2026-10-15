@@ -1,55 +1,76 @@
-name: Unfiltered Scores Live Bot
+name: V8 WORLD NO1 LIVE - NO KEY
 
 on:
   schedule:
-    - cron: '*/2 * * * *'   # Every 2 mins live goals
-  workflow_dispatch:
+    - cron: '*/2 * * * *'  # Every 2 mins - world fastest
+  workflow_dispatch:  # Manual run button
+
+concurrency:
+  group: unfiltered-live
+  cancel-in-progress: false
 
 jobs:
-  live-bot:
+  live-scores:
     runs-on: ubuntu-latest
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+    permissions:
+      contents: write
 
-      - name: Setup Python
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Python 3.11
         uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
+          python-version: '3.11'
+          cache: 'pip'
 
-      - name: Install dependencies
+      - name: Install Free Libs (No Key Needed)
         run: |
-          pip install requests Pillow
+          pip install --upgrade pip
+          pip install requests
 
-      - name: Run Unfiltered Scores Bot
+      - name: Check Secrets
+        run: |
+          if [ -z "${{ secrets.FB_PAGE_ID }}" ]; then echo "❌ FB_PAGE_ID missing"; exit 1; fi
+          if [ -z "${{ secrets.FB_PAGE_TOKEN }}" ]; then echo "❌ FB_PAGE_TOKEN missing"; exit 1; fi
+          echo "✅ Secrets OK - Page ID length ${#FB_PAGE_ID}"
+
+      - name: Run V8 NO-KEY Bot
         env:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
         run: |
-          echo "=== CHECKING SECRETS ==="
-          echo "PAGE_ID is: $FB_PAGE_ID"
-          echo "PAGE_ID length: ${#FB_PAGE_ID}"
-          echo "TOKEN length: ${#FB_PAGE_TOKEN}"
-          
-          if [ ${#FB_PAGE_ID} -lt 5 ]; then
-            echo "ERROR: FB_PAGE_ID is empty or 0 - Secrets not set!"
-            exit 1
-          fi
-          
-          if [ ${#FB_PAGE_TOKEN} -lt 50 ]; then
-            echo "ERROR: FB_PAGE_TOKEN is empty - Secrets not set!"
-            exit 1
-          fi
-          
-          echo "=== SECRETS OK - RUNNING BOT ==="
+          echo "Starting V8 WORLD NO1..."
           python bot.py
 
-      - name: Save posted state
+      - name: Save History (posted_state.json)
+        run: |
+          git config user.name "Unfiltered Bot V8"
+          git config user.email "bot@unfiltered.local"
+          
+          # Create file if not exists
+          if [ ! -f posted_state.json ]; then
+            echo '{"kickoff":[],"goals":[],"red":[],"ft":[]}' > posted_state.json
+          fi
+
+          git add posted_state.json || true
+          
+          if git diff --staged --quiet; then
+            echo "No new events - nothing to save"
+          else
+            git commit -m "V8 LIVE - $(date -u '+%Y-%m-%d %H:%M UTC') - Goals/Reds/Kickoff [skip ci]"
+            git push
+            echo "✅ History saved"
+          fi
+
+      - name: Show Status
         if: always()
         run: |
-          git config --global user.name "Unfiltered Bot"
-          git config --global user.email "bot@unfiltered.com"
-          git add posted_state.json || echo "No state file yet"
-          git commit -m "Update posted state $(date)" || echo "No changes"
-          git push || echo "Push failed or no changes"
+          echo "=== V8 STATUS ==="
+          cat posted_state.json | head -c 500
+          echo ""
+          echo "Last run: $(date)"
