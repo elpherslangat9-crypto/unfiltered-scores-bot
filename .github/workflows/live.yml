@@ -1,9 +1,9 @@
-name: V8 WORLD NO1 LIVE - NO KEY
+name: V8 WORLD NO1 LIVE - NO KEY FIXED
 
 on:
   schedule:
-    - cron: '*/2 * * * *'  # Every 2 mins - world fastest
-  workflow_dispatch:  # Manual run button
+    - cron: '*/2 * * * *'
+  workflow_dispatch:
 
 concurrency:
   group: unfiltered-live
@@ -26,7 +26,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-          cache: 'pip'
 
       - name: Install Free Libs (No Key Needed)
         run: |
@@ -34,43 +33,30 @@ jobs:
           pip install requests
 
       - name: Check Secrets
+        env:
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
         run: |
-          if [ -z "${{ secrets.FB_PAGE_ID }}" ]; then echo "❌ FB_PAGE_ID missing"; exit 1; fi
-          if [ -z "${{ secrets.FB_PAGE_TOKEN }}" ]; then echo "❌ FB_PAGE_TOKEN missing"; exit 1; fi
-          echo "✅ Secrets OK - Page ID length ${#FB_PAGE_ID}"
+          if [ -z "$FB_PAGE_ID" ]; then echo "❌ FB_PAGE_ID missing"; exit 1; fi
+          echo "✅ Secrets OK"
 
       - name: Run V8 NO-KEY Bot
         env:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
         run: |
-          echo "Starting V8 WORLD NO1..."
           python bot.py
 
-      - name: Save History (posted_state.json)
+      - name: Save History
         run: |
           git config user.name "Unfiltered Bot V8"
           git config user.email "bot@unfiltered.local"
-          
-          # Create file if not exists
           if [ ! -f posted_state.json ]; then
             echo '{"kickoff":[],"goals":[],"red":[],"ft":[]}' > posted_state.json
           fi
-
           git add posted_state.json || true
-          
           if git diff --staged --quiet; then
-            echo "No new events - nothing to save"
+            echo "No new events"
           else
-            git commit -m "V8 LIVE - $(date -u '+%Y-%m-%d %H:%M UTC') - Goals/Reds/Kickoff [skip ci]"
+            git commit -m "V8 LIVE $(date -u) [skip ci]"
             git push
-            echo "✅ History saved"
           fi
-
-      - name: Show Status
-        if: always()
-        run: |
-          echo "=== V8 STATUS ==="
-          cat posted_state.json | head -c 500
-          echo ""
-          echo "Last run: $(date)"
