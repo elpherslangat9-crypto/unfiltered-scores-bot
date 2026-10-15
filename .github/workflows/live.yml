@@ -9,20 +9,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          
       - run: pip install requests
 
       - name: Run Unfiltered Scores Bot
         env:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
-        run: |
-          echo "ID is $FB_PAGE_ID"
-          python bot.py
+        run: python bot.py
 
       - name: Commit state
         run: |
