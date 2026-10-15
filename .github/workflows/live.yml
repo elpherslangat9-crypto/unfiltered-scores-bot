@@ -1,36 +1,24 @@
 name: live
-
 on:
   schedule:
-    - cron: '*/2 * * * *'  # Every 2 min - catches all goals, never miss
-  workflow_dispatch:       # Manual run button
-
+    - cron: '*/2 * * * *'
+  workflow_dispatch:
 jobs:
   bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    
+    permissions:
+      contents: write
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install deps
-        run: pip install requests pillow
-
-      - name: Run V74 Brand Bot
-        env:
+      - run: pip install requests pillow
+      - env:
           PAGE_ID: ${{ secrets.PAGE_ID }}
           PAGE_ACCESS_TOKEN: ${{ secrets.PAGE_ACCESS_TOKEN }}
         run: python bot.py
-
-      - name: Save state - No double post
-        uses: stefanzweifel/git-auto-commit-action@v5
+      - uses: stefanzweifel/git-auto-commit-action@v5
         with:
-          commit_message: "V74 state - brand green"
+          commit_message: "update state"
           file_pattern: posted_state.json
-          disable_globbing: false
