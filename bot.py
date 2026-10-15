@@ -1,8 +1,6 @@
-import os, requests, json, re, random, time, xml.etree.ElementTree as ET
-from datetime import datetime, timezone
+import os, requests, json, re, xml.etree.ElementTree as ET, time
 from concurrent.futures import ThreadPoolExecutor
 
-# --- CONFIG ---
 PAGE_ID = os.getenv("FB_PAGE_ID")
 PAGE_TOKEN = os.getenv("FB_PAGE_TOKEN")
 STATE_FILE = "posted_state.json"
@@ -21,190 +19,215 @@ def save_state(s):
 
 def fb_text(msg):
     try:
-        r=requests.post(f"https://graph.facebook.com/{PAGE_ID}/feed",
+        r=requests.post(f"https://graph.facebook.com/v19.0/{PAGE_ID}/feed",
             data={"message":msg,"access_token":PAGE_TOKEN}, timeout=15)
-        print(f"FB TEXT {r.status_code} {r.text[:200]}")
+        print(f"FB TEXT {r.status_code} {r.text[:300]}")
         return r.status_code==200
     except Exception as e:
-        print(f"FB ERR {e}"); return False
+        print(f"FB TEXT ERR {e}"); return False
 
 def fb_photo(img_url, msg):
     try:
-        # download & check size >20kb
-        im=requests.get(img_url, headers=HEADERS, timeout=10).content
-        if len(im)<20000: return False
-        open("tmp.jpg","wb").write(im)
-        r=requests.post(f"https://graph.facebook.com/{PAGE_ID}/photos",
+        data=requests.get(img_url, headers=HEADERS, timeout=12).content
+        if len(data)<20000: return False
+        open("tmp.jpg","wb").write(data)
+        r=requests.post(f"https://graph.facebook.com/v19.0/{PAGE_ID}/photos",
             data={"caption":msg,"access_token":PAGE_TOKEN},
             files={"source":open("tmp.jpg","rb")}, timeout=20)
         print(f"FB PHOTO {r.status_code}")
         return r.status_code==200
-    except: return False
+    except Exception as e:
+        print(f"PHOTO ERR {e}"); return False
 
-def get_espn_scoreboard(league):
+def get_scoreboard(league):
     try:
         url=f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league}/scoreboard"
-        d=requests.get(url, headers=HEADERS, timeout=10).json()
-        return d.get("events",[])
+        j=requests.get(url, headers=HEADERS, timeout=10).json()
+        return j.get("events",[])
     except: return []
 
 def get_summary(event_id):
     try:
-        # try all leagues summary - fast method
         url=f"https://site.api.espn.com/apis/site/v2/sports/soccer/all/summary?event={event_id}"
         return requests.get(url, headers=HEADERS, timeout=8).json()
     except: return {}
 
-def get_goal_info(summary, home_score, away_score):
-    """Extract last goal minute and scorer"""
-    minute = ""
-    scorer = ""
+def get_goal_info(summary):
+    minute=""; scorer=""
     try:
-        # Try scoringPlays
-        plays = summary.get("scoringPlays",[]) or summary.get("header",{}).get("competitions",[{}])[0].get("details",[])
-        if not plays:
-            # Try details in competitions
-            comp = summary.get("header",{}).get("competitions",[{}])[0]
-            plays = comp.get("details",[]) + comp.get("situation",{}).get("lastPlay",{}).get("text","").split()
-
-        # Find last goal play
-        for play in reversed(plays if isinstance(plays, list) else []):
-            if isinstance(play, dict):
-                # Check if it's a goal
-                txt = (play.get("type",{}).get("text","") + " " + play.get("text","")).lower()
-                if "goal" in txt or "scoring" in str(play).lower():
-                    minute = play.get("clock",{}).get("displayValue","") or play.get("clock","") or ""
-                    # minute like 67' or 90'+2
-                    if not minute:
-                        minute = str(play.get("clock", ""))
-                    athletes = play.get("athletesInvolved",[]) or play.get("participants",[])
-                    if athletes:
-                        scorer = athletes[0].get("athlete",{}).get("displayName","") or athletes[0].get("displayName","")
-                    if not scorer:
-                        # try to extract from text "Schick (67')"
-                        m = re.search(r'([A-Z][a-z]+ [A-Z][a-z]+|[A-Z][a-z]+)\s*\(?\d', play.get("text",""))
-                        if m: scorer = m.group(1)
-                    if minute or scorer: break
-
-        # Clean minute
-        if minute:
-            minute = minute.replace("'", "").strip()
-            if minute and "'" not in minute: minute = f"{minute}'"
-        else:
-            # Try to find from summary header clock
-            minute = ""
-    except Exception as e:
-        print(f"goal_info err {e}")
+        comp=summary.get("header",{}).get("competitions",[{}])[0]
+        details=comp.get("details",[]) or summary.get("scoringPlays",[])
+        for play in reversed(details):
+            if not isinstance(play, dict): continue
+            txt=str(play).lower()
+            if "goal" in txt or "scoring" in txt:
+                clk=play.get("clock",{})
+                if isinstance(clk, dict): minute=clk.get("displayValue","")
+                else: minute=str(clk)
+                ath=play.get("athletesInvolved",[]) or play.get("participants",[])
+                if ath and isinstance(ath, list):
+                    first=ath[0]
+                    scorer=first.get("athlete",{}).get("displayName","") or first.get("displayName","")
+                if not scorer:
+                    t=play.get("text","")
+                    m=re.search(r'([A-Z][a-z]+\s[A-Z][a-z]+)', t)
+                    if m: scorer=m.group(1)
+                break
+    except: pass
+    if minute and "'" not in minute and minute: minute=f"{minute}'"
     return minute, scorer
 
 def get_news():
-    news_items=[]
-    RSS = ["https://www.bbc.com/sport/football/rss.xml","https://www.skysports.com/rss/0,20514,11095,00.xml",
-           "https://www.goal.com/en/feeds/news","https://www.espn.com/espn/rss/soccer/news"]
+    items=[]
+    RSS=[
+        "https://www.bbc.com/sport/football/rss.xml",
+        "https://www.skysports.com/rss/0,20514,11095,00.xml",
+        "https://www.goal.com/en/feeds/news"
+    ]
     for rss in RSS:
         try:
-            xml=requests.get(rss, headers=HEADERS, timeout=8).text
-            root=ET.fromstring(xml)
-            for item in root.findall(".//item")[:5]:
-                title=item.findtext("title","").strip()
-                link=item.findtext("link","").strip()
-                # filter football only
-                if any(x in title.lower() for x in ["football","premier","laliga","bundesliga","serie a","champions","transfer","arsenal","man","barca","real"]):
-                    # get image from enclosure
-                    img=""
-                    enc=item.find("enclosure")
-                    if enc is not None: img=enc.get("url","")
-                    if not img:
-                        media=item.find("{http://search.yahoo.com/mrss/}content")
-                        if media is not None: img=media.get("url","")
-                    news_items.append((title,link,img))
+            xml_text=requests.get(rss, headers=HEADERS, timeout=8).text
+            root=ET.fromstring(xml_text)
+            for it in root.findall(".//item")[:6]:
+                title=it.findtext("title","").strip()
+                link=it.findtext("link","").strip()
+                if not title or not link: continue
+                img=""
+                enc=it.find("enclosure")
+                if enc is not None: img=enc.get("url","")
+                if not img:
+                    m=it.find("{http://search.yahoo.com/mrss/}content")
+                    if m is not None: img=m.get("url","")
+                items.append((title,link,img))
         except: continue
-    return news_items
+    return items
 
-# --- MAIN ---
+# ========== MAIN ==========
 state=load_state()
-print("V-ULTIMATE v4 START")
+print("V-ULTIMATE v5 START - ALL FEATURES")
 
-# 1. FETCH ALL GAMES FAST IN PARALLEL
+# FAST FETCH ALL LEAGUES IN PARALLEL
 raw=[]
 with ThreadPoolExecutor(max_workers=12) as ex:
-    for lst in ex.map(get_espn_scoreboard, LEAGUES):
+    for lst in ex.map(get_scoreboard, LEAGUES):
         raw.extend(lst)
 
 print(f"TOTAL LIVE EVENTS {len(raw)}")
 
 posted=0
 
-# 2. PROCESS LIVE GAMES
 for ev in raw:
     if posted>=4: break
     try:
-        eid=str(ev["id"])
+        if not ev.get("competitions"): continue
         comp=ev["competitions"][0]
+        if not comp.get("competitors") or len(comp["competitors"])<2: continue
+
+        eid=str(ev["id"])
         status=comp["status"]["type"]["name"]
         hs=int(comp["competitors"][0]["score"])
-        as_ =int(comp["competitors"][1]["score"])
+        as_=int(comp["competitors"][1]["score"])
         home=comp["competitors"][0]["team"]["displayName"]
         away=comp["competitors"][1]["team"]["displayName"]
-        league_name=ev.get("league",{}).get("name","Football") if isinstance(ev.get("league"),dict) else comp.get("notes",[{}])[0].get("name","Football")
-        cur_score=f"{hs}-{as_}"
-        last_score=state["last"].get(eid,"")
 
-        # SUMMARY FOR GOAL DETAIL (only if score changed)
+        # SAFE league name - FIXES list index error
+        league_name="Football"
+        try:
+            if comp.get("notes") and len(comp["notes"])>0:
+                league_name=comp["notes"][0].get("name","Football")
+            elif ev.get("league"):
+                league_name=ev["league"].get("name","Football")
+            if not league_name: league_name="Football"
+        except: league_name="Football"
+
+        cur=f"{hs}-{as_}"
+        last=state["last"].get(eid,"")
+
+        # GET SUMMARY for lineup / goals / cards
         summary={}
-        if cur_score!=last_score and cur_score!="0-0":
+        need_summary = (eid not in state["lineup"]) or (cur!=last and last!="") or (status in ["STATUS_IN_PROGRESS","STATUS_FIRST_HALF","STATUS_SECOND_HALF"])
+        if need_summary:
             summary=get_summary(eid)
 
-        # --- KICK OFF ---
-        if status in ["STATUS_IN_PROGRESS","STATUS_FIRST_HALF","STATUS_SECOND_HALF","STATUS_HALFTIME"] and eid not in state["kick"]:
-            msg=f"🟢 KICK-OFF!\n\n{home} vs {away}\n🏆 {league_name}\n\nLive updates here!\n\n🟢 FOLLOW Unfiltered Scores for LIVE Goals!\n🔔 Turn ON Notifications\n\n#UnfilteredScores #LiveScores #FootballLive #FollowForMore #{league_name.replace(' ','')}"
-            if fb_text(msg):
-                state["kick"][eid]=1; posted+=1; save_state(state)
+        # --- 1. LINE-UPS ---
+        if eid not in state["lineup"] and status in ["STATUS_IN_PROGRESS","STATUS_FIRST_HALF","STATUS_SECOND_HALF","STATUS_SCHEDULED"]:
+            try:
+                lineups=[]
+                # try to get lineups from summary
+                ros=summary.get("rosters",[]) or summary.get("header",{}).get("competitions",[{}])[0].get("competitors",[])
+                if summary.get("rosters"):
+                    for team in summary.get("rosters",[]):
+                        tname=team.get("team",{}).get("displayName","")
+                        players=[p.get("athlete",{}).get("displayName","") for p in team.get("roster",[])[:11]]
+                        if players: lineups.append(f"{tname}: {', '.join(players[:5])}...")
+                if lineups or summary:
+                    msg=f"🟢 LINE-UPS: {home} vs {away}\n🏆 {league_name}\n\n" + ("\n".join(lineups) if lineups else "Confirmed line-ups are out! Who will win?") + f"\n\n🟢 FOLLOW Unfiltered Scores!\n\n#UnfilteredScores #LineUp #LiveScores"
+                    if len(msg)>100 and fb_text(msg):
+                        state["lineup"][eid]=1; posted+=1; save_state(state)
+            except: pass
 
-        # --- GOAL ALERT (ONLY IF SCORE CHANGED AND NOT 0-0 AND GAME IS LIVE) ---
-        elif cur_score!=last_score and status in ["STATUS_IN_PROGRESS","STATUS_FIRST_HALF","STATUS_SECOND_HALF"] and last_score!="":
-            minute, scorer = get_goal_info(summary, hs, as_)
+        # --- 2. KICK-OFF ---
+        if status in ["STATUS_IN_PROGRESS","STATUS_FIRST_HALF","STATUS_SECOND_HALF"] and eid not in state["kick"]:
+            msg=f"🟢 KICK-OFF!\n\n{home} vs {away}\n🏆 {league_name}\n\nLive action started!\n\n🟢 FOLLOW Unfiltered Scores for LIVE Goals!\n🔔 Turn ON Notifications\n\n#UnfilteredScores #LiveScores #KICKOFF"
+            if fb_text(msg):
+                state["kick"][eid]=1; posted+=1; save_state(state); state["last"][eid]=cur; continue
+
+        # --- 3. GOAL ALERT WITH MINUTE + SCORER ---
+        if cur!=last and last!="" and status in ["STATUS_IN_PROGRESS","STATUS_FIRST_HALF","STATUS_SECOND_HALF"]:
+            minute, scorer = get_goal_info(summary)
             minute_str = f" {minute}" if minute else ""
             scorer_str = f"\n⚽ Scorer: {scorer}" if scorer else ""
-            msg=f"🟢 GOAL !{minute_str}\n\n{home} {hs} - {as_} {away}{scorer_str}\n🏆 {league_name}\n⏱️ {minute if minute else 'Live'}\n\n🟢 FOLLOW Unfiltered Scores for LIVE Goals!\n\n#UnfilteredScores #LiveScores #{home.replace(' ','')} #{away.replace(' ','')} #GoalAlert"
+            msg=f"🟢 GOAL !{minute_str}\n\n{home} {hs} - {as_} {away}{scorer_str}\n🏆 {league_name}\n⏱️ {minute if minute else 'Live'}\n\n🟢 FOLLOW Unfiltered Scores for LIVE Goals!\n\n#UnfilteredScores #GoalAlert #{home.replace(' ','')} #{away.replace(' ','')}"
             if fb_text(msg):
-                state["last"][eid]=cur_score; posted+=1; save_state(state)
-                continue
+                state["last"][eid]=cur; posted+=1; save_state(state); continue
 
-        # Update last score tracker
-        if cur_score!=last_score:
-            state["last"][eid]=cur_score
+        if cur!=last: state["last"][eid]=cur
 
-        # --- HALF TIME ---
+        # --- 4. RED CARD (from commentary) ---
+        if eid not in state["red"]:
+            try:
+                txt=str(summary).lower()
+                if "red card" in txt:
+                    msg=f"🟢 RED CARD! 🔴\n\n{home} vs {away}\n🏆 {league_name}\n\nSomeone sent off!\n\n🟢 FOLLOW Unfiltered Scores!\n\n#RedCard #UnfilteredScores"
+                    if fb_text(msg): state["red"][eid]=1; posted+=1; save_state(state)
+            except: pass
+
+        # --- 5. PENALTY ---
+        if eid not in state["pen"]:
+            try:
+                txt=str(summary).lower()
+                if "penalty" in txt and "penalty awarded" in txt:
+                    msg=f"🟢 PENALTY! 🎯\n\n{home} vs {away}\n🏆 {league_name}\n\nPenalty awarded!\n\n🟢 FOLLOW Unfiltered Scores!\n\n#Penalty #UnfilteredScores"
+                    if fb_text(msg): state["pen"][eid]=1; posted+=1; save_state(state)
+            except: pass
+
+        # --- 6. HALF TIME ---
         if status=="STATUS_HALFTIME" and eid not in state["ht"]:
-            msg=f"🟢 HALF TIME: {home} {hs} - {as_} {away}\n🏆 {league_name}\n\nSecond half soon!\n\n🟢 FOLLOW Unfiltered Scores!\n\n#UnfilteredScores #HalfTime"
-            if fb_text(msg):
-                state["ht"][eid]=1; posted+=1; save_state(state)
+            msg=f"🟢 HALF TIME: {home} {hs} - {as_} {away}\n🏆 {league_name}\n\nSecond half coming!\n\n🟢 FOLLOW Unfiltered Scores!\n\n#HalfTime #UnfilteredScores"
+            if fb_text(msg): state["ht"][eid]=1; posted+=1; save_state(state)
 
-        # --- FULL TIME (NOT as Goal Alert) ---
-        if status in ["STATUS_FULL_TIME","STATUS_FINAL"] and eid not in state["ft"]:
-            # Only post FT if it finished today (check last score was tracked today)
-            if eid in state["last"] or eid in state["kick"]: # means we tracked it live today
-                msg=f"🟢 FULL TIME: {home} {hs} - {as_} {away}\n🏆 {league_name}\n⏱️ FT\n\nWhat a game! Your MOTM? 👇\n\n🟢 FOLLOW Unfiltered Scores for LIVE Goals!\n\n#UnfilteredScores #FullTime #{league_name.replace(' ','')}"
-                if fb_text(msg):
-                    state["ft"][eid]=1; posted+=1; save_state(state)
+        # --- 7. FULL TIME ---
+        if status in ["STATUS_FULL_TIME","STATUS_FINAL","STATUS_FINAL_PEN"] and eid not in state["ft"]:
+            if eid in state["kick"] or eid in state["last"]: # only if tracked today
+                msg=f"🟢 FULL TIME: {home} {hs} - {as_} {away}\n🏆 {league_name}\n⏱️ FT\n\nYour MOTM? 👇\n\n🟢 FOLLOW Unfiltered Scores for LIVE Goals!\n\n#FullTime #UnfilteredScores #{league_name.replace(' ','')}"
+                if fb_text(msg): state["ft"][eid]=1; posted+=1; save_state(state)
 
     except Exception as e:
-        print(f"EV ERR {e}"); continue
+        print(f"EV ERR {e}")
+        continue
 
-# 3. NEWS IF NO LIVE POSTS
+# --- 8. NEWS WITH PHOTO WHEN NO LIVE ---
 if posted==0:
     news=get_news()
     for title,link,img in news:
         if posted>=2: break
         if link in state["news"]: continue
-        msg=f"🟢 BREAKING: {title}\n\nRead more: {link}\n\n🟢 FOLLOW Unfiltered Scores for Football News!\n🔔 Turn ON Notifications\n\n#UnfilteredScores #FootballNews #BreakingNews #PremierLeague #LaLiga"
+        msg=f"🟢 BREAKING: {title}\n\nRead more: {link}\n\n🟢 FOLLOW Unfiltered Scores for Breaking News!\n🔔 Turn ON Notifications\n\n#UnfilteredScores #FootballNews #BreakingNews"
         ok=False
         if img: ok=fb_photo(img, msg)
         if not ok: ok=fb_text(msg)
         if ok:
-            state["news"].append(link); posted+=1; save_state(state)
-            time.sleep(2)
+            state["news"].append(link); posted+=1; save_state(state); time.sleep(2)
 
 print(f"V-ULTIMATE DONE POSTED {posted}")
 save_state(state)
