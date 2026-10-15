@@ -1,5 +1,7 @@
 {
-  "kick": {},
+  "kick": {
+    "401915571": 1
+  },
   "goals": {
     "401875584_goal__398.0_": true,
     "401875584_goal_53488006_398.0_Goal! Excelsior 0, G": true,
@@ -90,7 +92,9 @@
     "401875584_red_53493670_Goal! Excelsior 1, G": true,
     "401879264_red_53497320_Second yellow card t": true,
     "401882855_red_53496688_Goal! Real Betis 1, ": true,
-    "401884778_red_53497503_Second yellow card t": true
+    "401884778_red_53497503_Second yellow card t": true,
+    "401915577": 1,
+    "401915393": 1
   },
   "pen": {
     "401915409": true,
@@ -100,7 +104,9 @@
     "401915573": true,
     "401915576": true
   },
-  "lineup": {},
+  "lineup": {
+    "761878": 1
+  },
   "news": [],
   "last": {
     "401879267": "1-0",
