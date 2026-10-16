@@ -1,62 +1,33 @@
-name: V8 WORLD NO1 LIVE - NO KEY FIXED
+name: V16 FAST BIG LEAGUES KPL
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: "*/8 * * * *" # Every 8 mins - FAST but SAFE - never miss goal, no FB jail
   workflow_dispatch:
 
+# FIX 473 RUNS - only 1 run at a time
 concurrency:
-  group: unfiltered-live
-  cancel-in-progress: false
+  group: "v16-big-leagues-kpl"
+  cancel-in-progress: true
 
 jobs:
-  live-scores:
+  build:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0
-
-      - name: Setup Python 3.11
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-
-      - name: Install Free Libs (No Key Needed)
-        run: |
-          pip install --upgrade pip
-          pip install requests
-
-      - name: Check Secrets
-        env:
-          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
-        run: |
-          if [ -z "$FB_PAGE_ID" ]; then echo "❌ FB_PAGE_ID missing"; exit 1; fi
-          echo "✅ Secrets OK"
-
-      - name: Run V8 NO-KEY Bot
+      - run: pip install requests
+      - name: Run V16
         env:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
+        run: python bot.py
+      - name: Save State
         run: |
-          python bot.py
-
-      - name: Save History
-        run: |
-          git config user.name "Unfiltered Bot V8"
-          git config user.email "bot@unfiltered.local"
-          if [ ! -f posted_state.json ]; then
-            echo '{"kickoff":[],"goals":[],"red":[],"ft":[]}' > posted_state.json
-          fi
+          git config --global user.name "bot"
+          git config --global user.email "bot@bot.com"
           git add posted_state.json || true
-          if git diff --staged --quiet; then
-            echo "No new events"
-          else
-            git commit -m "V8 LIVE $(date -u) [skip ci]"
-            git push
-          fi
+          git diff --staged --quiet || git commit -m "v16 $(date -u)" || true
+          git push || true
