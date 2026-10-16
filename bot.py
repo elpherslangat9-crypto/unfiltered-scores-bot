@@ -1,11 +1,15 @@
-import os, json, time, requests, xml.etree.ElementTree as ET
+import os, json, time, random, requests, xml.etree.ElementTree as ET
 from datetime import datetime
 
 FB_PAGE_ID = os.getenv("FB_PAGE_ID","").strip()
 FB_TOKEN = os.getenv("FB_PAGE_TOKEN","").strip()
 STATE_FILE = "posted_state.json"
-HEADERS = {"User-Agent":"Mozilla/5.0"}
-MAX_PER_RUN = 15 # BOSS LOVES SPEED - 15 posts allowed per run
+HEADERS = {
+    "User-Agent":"Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+    "Accept":"application/json",
+    "Referer":"https://www.livescore.com/"
+}
+MAX_PER_RUN = 15
 
 def load_state():
     default = {"kickoff":[],"goals":[],"red":[],"ft":[],"news":[]}
@@ -14,85 +18,134 @@ def load_state():
             data = json.load(f)
             if isinstance(data, dict):
                 for k in default:
-                    if k not in data:
-                        data[k]=[]
+                    if k not in data: data[k]=[]
+                for k in data: data[k]=data[k][-150:]
                 return data
-            if isinstance(data, list):
-                default["goals"]=data
-                return default
     except: pass
     return default
 
 def save_state(s):
     try:
-        with open(STATE_FILE,"w") as f:
-            json.dump(s,f)
-        print(f"STATE SAVED {len(str(s))} bytes")
-    except Exception as e:
-        print(f"SAVE FAIL {e}")
+        for k in s: s[k]=s[k][-150:]
+        with open(STATE_FILE,"w") as f: json.dump(s,f)
+    except: pass
 
 def post_to_fb(message):
     try:
-        if not FB_PAGE_ID or FB_PAGE_ID=="0":
-            print("PAGE ID 0"); return False
+        if not FB_PAGE_ID or FB_PAGE_ID=="0": return False
         url = f"https://graph.facebook.com/v20.0/{FB_PAGE_ID}/feed"
         r = requests.post(url, data={"message":message,"access_token":FB_TOKEN}, timeout=20)
         print(f"FB {r.status_code} {r.text[:200]}")
         return r.status_code==200
-    except Exception as e:
-        print(f"FB ERROR {e}")
-        return False
+    except: return False
 
-def get_live():
+def get_live_from_livescore():
+    """
+    Livescore private API - used by their own website/app
+    Returns live matches with scores, goals, minute
+    """
     events=[]
+    seen=set()
     urls = [
-        "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard",
-        "https://site.api.espn.com/apis/site/v2/sports/soccer/esp.1/scoreboard",
-        "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard",
-        "https://site.api.espn.com/apis/site/v2/sports/soccer/ita.1/scoreboard",
-        "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard",
-        "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard",
-        "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/scoreboard",
-        "https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard",
+        "https://prod-public-api.livescore.com/v1/api/react/stage/soccer/live.json?MD=1",
+        "https://prod-public-api.livescore.com/v1/api/app/stage/soccer/live",
     ]
     for api_url in urls:
         try:
-            data = requests.get(api_url, headers=HEADERS, timeout=15).json()
-            for ev in data.get("events",[]):
-                try:
-                    eid = ev.get("id") or ev.get("uid") or str(hash(str(ev)))
-                    comp = ev.get("competitions",[{}])[0]
-                    if not comp: continue
-                    league = comp.get("league",{}).get("name","Football")
-                    state = comp.get("status",{}).get("type",{}).get("state","")
-                    clock = comp.get("status",{}).get("displayClock","")
-                    comps = comp.get("competitors",[])
-                    if len(comps)<2: continue
-                    home, away = comps[0], comps[1]
-                    hname = home.get("team",{}).get("displayName","Home")
-                    aname = away.get("team",{}).get("displayName","Away")
-                    hscore = home.get("score","0")
-                    ascore = away.get("score","0")
+            print(f"Trying Livescore {api_url}")
+            r = requests.get(api_url, headers=HEADERS, timeout=15)
+            print(f"Livescore status {r.status_code} len {len(r.text)}")
+            if r.status_code!=200: continue
+            data = r.json()
+            # Structure: Stages -> Events ->...
+            stages = data.get("Stages",[]) or data.get("stages",[]) or []
+            if not stages and "data" in data:
+                stages = data["data"].get("Stages",[])
 
-                    if state=="pre":
-                        events.append({"id":f"KO_{eid}", "type":"KICKOFF", "league":league, "home":hname, "away":aname})
-                    for d in comp.get("details",[]):
-                        did = d.get("id") or d.get("clock") or str(hash(str(d)))
-                        if d.get("scoringPlay")==True:
-                            ath = d.get("athletesInvolved",[])
-                            player = ath[0].get("displayName","") if ath else ""
-                            events.append({"id":f"G_{eid}_{did}", "type":"GOAL", "league":league, "home":hname, "away":aname, "hs":hscore, "as":ascore, "minute":clock or d.get("clock",""), "player":player})
-                        if d.get("redCard")==True:
-                            ath = d.get("athletesInvolved",[])
-                            player = ath[0].get("displayName","") if ath else ""
-                            if player:
-                                events.append({"id":f"R_{eid}_{did}", "type":"RED", "league":league, "home":hname, "away":aname, "hs":hscore, "as":ascore, "minute":clock or d.get("clock",""), "player":player})
-                    if state=="post":
-                        events.append({"id":f"FT_{eid}", "type":"FT", "league":league, "home":hname, "away":aname, "hs":hscore, "as":ascore})
-                except: continue
+            for stage in stages:
+                comp_name = stage.get("Cnm","Football") + " - " + stage.get("Snm","")
+                league = stage.get("Cnm","") or stage.get("Snm","Football")
+                for ev in stage.get("Events",[]) or stage.get("events",[]) or []:
+                    try:
+                        eid = str(ev.get("Eid") or ev.get("eid") or ev.get("id"))
+                        if not eid: continue
+                        home = ev.get("T1",[{}])[0].get("Nm","Home") if isinstance(ev.get("T1"),list) else ev.get("home","Home")
+                        away = ev.get("T2",[{}])[0].get("Nm","Away") if isinstance(ev.get("T2"),list) else ev.get("away","Away")
+                        # Scores
+                        tr1 = ev.get("Tr1","0") # home score
+                        tr2 = ev.get("Tr2","0") # away score
+                        # Status
+                        esd = ev.get("Esd") # match minute/status
+                        ecd = ev.get("Ecd") # status code
+                        # Ecd: 0 not started, 1 live, 2 HT, 3 FT etc
+                        minute = ev.get("Epr",0) # minute
+                        status = ev.get("Eps","") # e.g. "HT", "FT"
+
+                        # Build unique keys
+                        if ecd==0 or ecd=="0": # Not started -> Kickoff if within few mins? Livescore live endpoint only has live, so skip
+                            continue
+
+                        # GOAL detection - we track score changes via Tr1/Tr2
+                        # Livescore API does not give individual goal events in live.json, only current score
+                        # So we create goal event from score
+                        key_goal = f"G_{eid}_{tr1}_{tr2}"
+                        key_ft = f"FT_{eid}_{tr1}_{tr2}"
+                        key_kick = f"KO_{eid}"
+
+                        # If match is live and score changed, it's a goal
+                        if str(ecd)=="1" or str(status).find("Live")>=0 or minute>0:
+                            # Check if this score already seen as goal
+                            if key_goal not in seen:
+                                seen.add(key_goal)
+                                # Avoid posting 0-0 as goal
+                                if not (tr1=="0" and tr2=="0"):
+                                    events.append({
+                                        "id": key_goal,
+                                        "type":"GOAL",
+                                        "league": league,
+                                        "home": home,
+                                        "away": away,
+                                        "hs": tr1,
+                                        "as": tr2,
+                                        "minute": f"{minute}'" if minute else status or "LIVE",
+                                        "player": "" # Livescore live.json doesn't give scorer in this endpoint, we add later from details API
+                                    })
+                        # FT detection
+                        if status=="FT" or ecd==3 or status=="FT" or str(esd).find("FT")>=0:
+                            if key_ft not in seen:
+                                seen.add(key_ft)
+                                events.append({"id":key_ft,"type":"FT","league":league,"home":home,"away":away,"hs":tr1,"as":tr2})
+
+                    except Exception as ex:
+                        print(f"Parse event fail {ex}")
+                        continue
+            if events:
+                break # Got events from first working URL
         except Exception as e:
-            print(f"URL fail {api_url[:40]} {e}")
+            print(f"Livescore API FAIL {e}")
             continue
+
+    # If Livescore main API failed or gave 0 events, try backup API-Sports style or ESPN as fallback
+    if not events:
+        print("Livescore live 0 events, trying ESPN fallback for now...")
+        # Fallback to ESPN just to keep bot alive, you can remove later
+        try:
+            data = requests.get("https://site.api.espn.com/apis/site/v2/sports/soccer/all/scoreboard", headers=HEADERS, timeout=15).json()
+            for ev in data.get("events",[]):
+                eid = ev.get("id")
+                comp = ev.get("competitions",[{}])[0]
+                league = comp.get("league",{}).get("name","Football")
+                comps = comp.get("competitors",[])
+                if len(comps)<2: continue
+                hname = comps[0].get("team",{}).get("displayName","Home")
+                aname = comps[1].get("team",{}).get("displayName","Away")
+                hscore = comps[0].get("score","0")
+                ascore = comps[1].get("score","0")
+                state = comp.get("status",{}).get("type",{}).get("state","")
+                if state=="post":
+                    events.append({"id":f"FT_{eid}_{hscore}_{ascore}","type":"FT","league":league,"home":hname,"away":aname,"hs":hscore,"as":ascore})
+        except: pass
+
     return events
 
 def get_news_all_sources():
@@ -101,106 +154,66 @@ def get_news_all_sources():
         ("https://feeds.bbci.co.uk/sport/football/rss.xml", "BBC"),
         ("https://www.skysports.com/rss/11095", "Sky Sports"),
         ("https://www.espn.com/espn/rss/soccer/news", "ESPN"),
-        ("https://talksport.com/football/feed/", "TalkSport"),
         ("https://www.goal.com/en/feeds/news?fmt=rss", "Goal"),
     ]
     for url, name in sources:
         try:
-            rss = requests.get(url, headers=HEADERS, timeout=10).text
+            rss = requests.get(url, headers=HEADERS, timeout=12).text
             root = ET.fromstring(rss)
-            for item in root.findall(".//item")[:3]:
-                title_el = item.find("title")
-                link_el = item.find("link")
-                if title_el is None or link_el is None: continue
-                title = title_el.text
-                link = link_el.text
-                if not title or len(title)<15: continue
-                news.append({"id":link, "title":title, "source":name})
-        except Exception as e:
-            print(f"NEWS FAIL {name} {e}")
-            continue
+            for item in root.findall(".//item")[:5]:
+                title = item.find("title").text.strip() if item.find("title") is not None else ""
+                link = item.find("link").text.strip() if item.find("link") is not None else ""
+                if title and len(title)>15:
+                    news.append({"id":link, "title":title, "source":name})
+        except: continue
+    random.shuffle(news)
     return news
 
 def main():
-    print(f"V8 HIGH-VOLUME + NEWS WORLD NO.1 {datetime.now()}")
+    print(f"V11 LIVESCORE EDITION {datetime.now()}")
     state=load_state()
-    print(f"State keys {list(state.keys())} kickoff:{len(state.get('kickoff',[]))} goals:{len(state.get('goals',[]))} news:{len(state.get('news',[]))}")
-
-    evs=get_live()
-    print(f"TOTAL LIVE EVENTS {len(evs)}")
+    evs=get_live_from_livescore()
+    print(f"LIVESCORE EVENTS {len(evs)}")
     posted=0
-
-    all_ids = []
-    for k in ["kickoff","goals","red","ft"]:
-        all_ids += state.get(k,[])
+    all_ids=[]
+    for k in ["kickoff","goals","red","ft"]: all_ids+=state.get(k,[])
 
     for ev in evs:
-        if posted >= MAX_PER_RUN:
-            print(f"MAX {MAX_PER_RUN} REACHED")
-            break
-        if ev["id"] in all_ids: continue
-
-        ok=False
-        try:
-            if ev["type"]=="KICKOFF":
-                ok=post_to_fb(f"🟢 KICK-OFF! 🏁\n\n{ev['home']} vs {ev['away']}\n🏆 {ev['league']}\n\nWho wins? Predict score 👇\n\n🟢 FOLLOW Unfiltered Scores for LIVE Goals!")
-                if ok: state["kickoff"].append(ev["id"]); posted+=1
-
-            elif ev["type"]=="GOAL":
-                ok=post_to_fb(f"🟢 GOAL! ⚽ {ev['minute']}\n\n{ev['home']} {ev['hs']}-{ev['as']} {ev['away']}\n🎯 Scorer: {ev['player']}\n🏆 {ev['league']}\n\n🔥 UNFILTERED! Follow for next goal!")
-                if ok: state["goals"].append(ev["id"]); posted+=1
-
-            elif ev["type"]=="RED":
-                if len(ev.get("player",""))<2: continue
-                ok=post_to_fb(f"🟢 RED CARD! 🔴 {ev['minute']}\n\n{ev['home']} vs {ev['away']}\n💥 {ev['player']} SENT OFF!\nScore {ev['hs']}-{ev['as']}\n🏆 {ev['league']}\n\nGame changed!")
-                if ok: state["red"].append(ev["id"]); posted+=1
-
-            elif ev["type"]=="FT":
-                ok=post_to_fb(f"🟢 FULL-TIME! 🏁\n\n{ev['home']} {ev['hs']}-{ev['as']} {ev['away']}\n🏆 {ev['league']}\n\nRate this game 1-10 👇\n\n🟢 FOLLOW for more!")
-                if ok: state["ft"].append(ev["id"]); posted+=1
-
-            if ok:
-                time.sleep(3)
-        except Exception as e:
-            print(f"POST LOOP ERROR {e}")
+        if posted>=MAX_PER_RUN: break
+        if ev["id"] in all_ids:
+            print(f"SKIP DUP {ev['id']}")
             continue
+        ok=False
+        if ev["type"]=="GOAL":
+            # Try to get scorer from Livescore details API (optional)
+            scorer = ev.get("player","")
+            scorer_text = f"🎯 Scorer: {scorer}\n" if scorer else ""
+            ok=post_to_fb(f"🟢 GOAL! ⚽ {ev['minute']}\n\n{ev['home']} {ev['hs']}-{ev['as']} {ev['away']}\n{scorer_text}🏆 {ev['league']}\n\n⚡ LIVE from LiveScore! Follow for next goal!")
+            if ok: state["goals"].append(ev["id"]); posted+=1
+        elif ev["type"]=="FT":
+            ok=post_to_fb(f"🟢 FULL-TIME! 🏁\n\n{ev['home']} {ev['hs']}-{ev['as']} {ev['away']}\n🏆 {ev['league']}\n\nRate this game 1-10 👇\n\n🟢 FOLLOW Unfiltered Scores!")
+            if ok: state["ft"].append(ev["id"]); posted+=1
+        if ok: time.sleep(3)
 
-    # --- NEWS PART - 1 news per run to keep speed but not spam ---
-    if posted < MAX_PER_RUN:
-        try:
-            fresh_news = get_news_all_sources()
-            print(f"NEWS FOUND {len(fresh_news)}")
-            for n in fresh_news:
-                if n["id"] in state.get("news",[]): continue
-                msg = f"""🟢 BREAKING NEWS! 📰🔥
-
-{n['title']}
-
-Source: {n['source']}
-
-Your thoughts? 👇
-
-🟢 FOLLOW Unfiltered Scores for LIVE Goals + Breaking News!
-
-#FootballNews #Breaking #UnfilteredScores"""
-                if post_to_fb(msg):
-                    state["news"].append(n["id"])
-                    posted+=1
-                    time.sleep(3)
-                    break # Only 1 news per run - keep your speed
-        except Exception as e:
-            print(f"NEWS LOOP ERROR {e}")
+    # NON-STOP NEWS - 2 if no games, 1 if games
+    try:
+        fresh_news = get_news_all_sources()
+        news_to_post = 2 if len(evs)==0 else 1
+        count=0
+        for n in fresh_news:
+            if count>=news_to_post or posted>=MAX_PER_RUN: break
+            if n["id"] in state.get("news",[]): continue
+            if post_to_fb(f"🟢 BREAKING! 📰🔥\n\n{n['title']}\n\nSource: {n['source']}\n\nThoughts? 👇\n\n🟢 FOLLOW Unfiltered Scores 24/7!"):
+                state["news"].append(n["id"]); posted+=1; count+=1; time.sleep(3)
+        if count==0 and fresh_news and posted<MAX_PER_RUN:
+            n=random.choice(fresh_news)
+            post_to_fb(f"🟢 FOOTBALL UPDATE! 🔥\n\n{n['title']}\n\nVia {n['source']}\n\n#UnfilteredScores")
+            posted+=1
+    except Exception as e:
+        print(f"NEWS ERR {e}")
 
     save_state(state)
-    print(f"DONE POSTED {posted} - SUCCESS - Will save history now")
+    print(f"DONE POSTED {posted}")
 
 if __name__=="__main__":
-    try:
-        main()
-    except Exception as e:
-        print(f"CRITICAL ERROR BUT EXIT 0 so history saves: {e}")
-        # Force save empty state to not lose file
-        try:
-            if not os.path.exists(STATE_FILE):
-                with open(STATE_FILE,"w") as f: json.dump({"kickoff":[],"goals":[],"red":[],"ft":[],"news":[]}, f)
-        except: pass
+    main()
