@@ -2,7 +2,7 @@ name: V8 WORLD NO1 LIVE - NO KEY FIXED
 
 on:
   schedule:
-    - cron: '*/2 * * * *'
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 concurrency:
