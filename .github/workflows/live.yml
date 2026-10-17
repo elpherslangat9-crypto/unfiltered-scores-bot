@@ -1,4 +1,4 @@
-name: Unfiltered Scores LIVE V22 PERMANENT
+name: Unfiltered Scores LIVE V23 FIXED
 on:
   schedule:
     - cron: '*/3 * * * *'
@@ -14,9 +14,8 @@ jobs:
         with:
           python-version: '3.11'
       - name: Install deps
-        run: |
-          pip install requests pillow feedparser beautifulsoup4
-      - name: Run Bot V22 PERMANENT
+        run: pip install requests pillow feedparser
+      - name: Run Bot V23 FIXED
         env:
           FB_TOKEN: ${{ secrets.FB_TOKEN }}
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
@@ -26,5 +25,5 @@ jobs:
           git config user.name "bot"
           git config user.email "bot@unfiltered.com"
           git add state.json || true
-          git commit -m "state update" || true
+          git commit -m "state" || true
           git push || true
