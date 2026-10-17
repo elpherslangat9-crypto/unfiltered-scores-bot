@@ -46,7 +46,7 @@ ESPN_LEAGUES = [
     "https://site.api.espn.com/apis/site/v2/sports/soccer/ger.1/scoreboard",
     "https://site.api.espn.com/apis/site/v2/sports/soccer/fra.1/scoreboard",
     "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.champions/scoreboard",
-    "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/scoreboard"kpl livescores",
+    "https://site.api.espn.com/apis/site/v2/sports/soccer/uefa.europa/scoreboard",
 ]
 
 def fetch_json(url):
