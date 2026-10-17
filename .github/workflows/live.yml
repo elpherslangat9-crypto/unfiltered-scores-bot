@@ -1,8 +1,8 @@
-name: V17 FREE FAST BOT
+name: V18 FREE FAST BOT
 
 on:
   schedule:
-    - cron: '*/3 * * * *' # Runs every 5 mins - NEVER SLEEPS
+    - cron: '*/5 * * * *'
   workflow_dispatch:
 
 jobs:
@@ -24,12 +24,16 @@ jobs:
         env:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_TOKEN: ${{ secrets.FB_TOKEN }}
-        run: python bot.py
+        run: |
+          echo "Checking secrets exist..."
+          if [ -z "$FB_PAGE_ID" ]; then echo "ERROR FB_PAGE_ID is EMPTY - secret not set!"; exit 1; fi
+          echo "FB_PAGE_ID length: ${#FB_PAGE_ID} - Value starts with: ${FB_PAGE_ID:0:4}****"
+          python bot.py
 
       - name: Save state
         run: |
           git config user.name "bot"
           git config user.email "bot@bot.com"
           git add posted_state.json || true
-          git commit -m "save state" || true
+          git commit -m "save state V18.2" || true
           git push || true
