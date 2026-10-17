@@ -1,17 +1,13 @@
-name: V17 LIVE PERFECT BOT
+name: V17 FREE FAST BOT
 
 on:
   schedule:
-    - cron: '*/3 * * * *'
+    - cron: '*/3 * * * *' # Runs every 5 mins - NEVER SLEEPS
   workflow_dispatch:
-  push:
-    branches: [ main ]
 
 jobs:
   live-bot:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -19,25 +15,21 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.10'
 
       - name: Install dependencies
-        run: |
-          pip install --upgrade pip --quiet
-          pip install requests Pillow --quiet
+        run: pip install requests Pillow feedparser --quiet
 
-      - name: Run V17 Bot
+      - name: Run V18 Bot
         env:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_TOKEN: ${{ secrets.FB_TOKEN }}
-          FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
-          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
         run: python bot.py
 
       - name: Save state
         run: |
-          git config --global user.name "V17 Bot"
-          git config --global user.email "v17bot@github.com"
+          git config user.name "bot"
+          git config user.email "bot@bot.com"
           git add posted_state.json || true
-          git diff --staged --quiet || git commit -m "V17 state update"
+          git commit -m "save state" || true
           git push || true
