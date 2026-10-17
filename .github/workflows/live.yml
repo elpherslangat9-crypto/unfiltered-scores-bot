@@ -1,33 +1,36 @@
-name: V16 FAST BIG LEAGUES KPL
+name: V17 LIVE PERFECT BOT
 
 on:
   schedule:
-    - cron: "*/8 * * * *" # Every 8 mins - FAST but SAFE - never miss goal, no FB jail
+    - cron: '*/3 * * * *'  # Runs every 3 minutes - FASTEST GitHub allows
   workflow_dispatch:
-
-# FIX 473 RUNS - only 1 run at a time
-concurrency:
-  group: "v16-big-leagues-kpl"
-  cancel-in-progress: true
+  push:
+    branches: [ main ]
 
 jobs:
-  build:
+  live-bot:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install requests
-      - name: Run V16
+
+      - name: Install dependencies - NO DELAY
+        run: |
+          pip install --upgrade pip --quiet
+          pip install requests Pillow --quiet
+
+      - name: Run V17 Bot
         env:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
-          FB_PAGE_TOKEN: ${{ secrets.FB_PAGE_TOKEN }}
-        run: python bot.py
-      - name: Save State
-        run: |
-          git config --global user.name "bot"
-          git config --global user.email "bot@bot.com"
-          git add posted_state.json || true
-          git diff --staged --quiet || git commit -m "v16 $(date -u)" || true
-          git push || true
+          FB_TOKEN: ${{ secrets.FB_TOKEN }}
+          FOOTBALL_API_KEY: ${{ secrets.FOOTBALL_API_KEY }}
+          NEWS_API_KEY: ${{
