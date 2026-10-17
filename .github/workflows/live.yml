@@ -1,4 +1,4 @@
-name: V18 FREE FAST BOT
+name: V20 CLEAN HD BOT
 
 on:
   schedule:
@@ -9,25 +9,20 @@ jobs:
   live-bot:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-
-      - name: Install dependencies
-        run: pip install requests Pillow feedparser --quiet
+      - run: pip install requests Pillow feedparser --quiet
 
       - name: Run V18 Bot
         env:
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
           FB_TOKEN: ${{ secrets.FB_TOKEN }}
         run: |
-          echo "Checking secrets exist..."
-          if [ -z "$FB_PAGE_ID" ]; then echo "ERROR FB_PAGE_ID is EMPTY - secret not set!"; exit 1; fi
-          echo "FB_PAGE_ID length: ${#FB_PAGE_ID} - Value starts with: ${FB_PAGE_ID:0:4}****"
+          echo "PAGE_ID secret exists? length=${#FB_PAGE_ID}"
+          echo "PAGE_ID starts with: ${FB_PAGE_ID:0:4}****"
+          if [ -z "$FB_PAGE_ID" ]; then echo "ERROR: Secret FB_PAGE_ID is EMPTY! You named it wrong!"; exit 1; fi
           python bot.py
 
       - name: Save state
@@ -35,5 +30,5 @@ jobs:
           git config user.name "bot"
           git config user.email "bot@bot.com"
           git add posted_state.json || true
-          git commit -m "save state V18.2" || true
+          git commit -m "save state" || true
           git push || true
