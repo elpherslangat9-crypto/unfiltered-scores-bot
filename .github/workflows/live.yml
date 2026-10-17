@@ -1,34 +1,30 @@
-name: V20 CLEAN HD BOT
-
+name: Unfiltered Scores LIVE V22 PERMANENT
 on:
   schedule:
     - cron: '*/3 * * * *'
   workflow_dispatch:
 
 jobs:
-  live-bot:
+  live:
     runs-on: ubuntu-latest
+    timeout-minutes: 58
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
-          python-version: '3.10'
-      - run: pip install requests Pillow feedparser --quiet
-
-      - name: Run V18 Bot
-        env:
-          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
-          FB_TOKEN: ${{ secrets.FB_TOKEN }}
+          python-version: '3.11'
+      - name: Install deps
         run: |
-          echo "PAGE_ID secret exists? length=${#FB_PAGE_ID}"
-          echo "PAGE_ID starts with: ${FB_PAGE_ID:0:4}****"
-          if [ -z "$FB_PAGE_ID" ]; then echo "ERROR: Secret FB_PAGE_ID is EMPTY! You named it wrong!"; exit 1; fi
-          python bot.py
-
-      - name: Save state
+          pip install requests pillow feedparser beautifulsoup4
+      - name: Run Bot V22 PERMANENT
+        env:
+          FB_TOKEN: ${{ secrets.FB_TOKEN }}
+          FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+        run: python bot.py
+      - name: Save State
         run: |
           git config user.name "bot"
-          git config user.email "bot@bot.com"
-          git add posted_state.json || true
-          git commit -m "save state" || true
+          git config user.email "bot@unfiltered.com"
+          git add state.json || true
+          git commit -m "state update" || true
           git push || true
