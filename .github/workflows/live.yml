@@ -2,7 +2,7 @@ name: V17 LIVE PERFECT BOT
 
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/3 * * * *'
   workflow_dispatch:
   push:
     branches: [ main ]
