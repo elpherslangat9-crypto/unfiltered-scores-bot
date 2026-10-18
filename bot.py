@@ -85,12 +85,12 @@ def fetch_lineups(eid):
     res={"home":{"xi":[],"bench":[]},"away":{"xi":[],"bench":[]}}
     for idx,ros in enumerate(rosters[:2]):
      key="home" if idx==0 else "away";xi=[];bench=[]
-     for a in ros.get("roster",[]):
-      if not isinstance(a,dict):continue
-      ath=a.get("athlete",{});name=ath.get("displayName","") or a.get("displayName","")
-      jer=str(a.get("jersey","") or "");pos=a.get("position",{}).get("abbreviation","")
+     for aa in ros.get("roster",[]):
+      if not isinstance(aa,dict):continue
+      ath=aa.get("athlete",{});name=ath.get("displayName","") or aa.get("displayName","")
+      jer=str(aa.get("jersey","") or "");pos=aa.get("position",{}).get("abbreviation","")
       disp=f"{jer} {name} ({pos})".strip() if name else ""
-      if a.get("starter"):xi.append(disp or name)
+      if aa.get("starter"):xi.append(disp or name)
       else:bench.append(name)
      if not xi:
       xi=[r.get("athlete",{}).get("displayName","") for r in ros.get("roster",[])[:11]]
@@ -159,8 +159,8 @@ def fetch_og(u):
 def get_img(entry):
  try:
   if hasattr(entry,'media_content'):
-   for m in entry.media_content:
-    if m.get('url'):return m['url']
+   for mm in entry.media_content:
+    if mm.get('url'):return mm['url']
   if hasattr(entry,'enclosures') and entry.enclosures:
    href=entry.enclosures[0].get('href')
    if href and href.startswith("http"):return href
@@ -182,6 +182,57 @@ def make_real(url):
   bw,bh=300,36;bx=(W-bw)//2;by=H-bh-12
   dr.rounded_rectangle([bx,by,bx+bw,by+bh],radius=18,fill=(0,210,85,230))
   dr.text((bx+20,by+7),"🟢 UNFILTERED SCORES",font=bs,fill=(255,255,255))
+  b=BytesIO();can.save(b,format="JPEG",quality=96);b.seek(0);return b
+ except:return None
+# NEW - FT PERFECT WITH SCORERS LIKE MILAN 3-2 EXAMPLE
+def make_ft_final(h,a,hs,asc,goals,real_url=None):
+ try:
+  W,H=1080,1350
+  can=Image.new("RGB",(W,H),(12,12,16))
+  d=ImageDraw.Draw(can)
+  top_h=840
+  if real_url:
+   try:
+    r=requests.get(real_url,timeout=20,headers={"User-Agent":"Mozilla/5.0"})
+    if r.status_code==200:
+     orig=Image.open(BytesIO(r.content)).convert("RGB")
+     iw,ih=orig.size
+     ra=max(W/iw,top_h/ih)
+     nw,nh=int(iw*ra),int(ih*ra)
+     rs=orig.resize((nw,nh),Image.LANCZOS)
+     x=(W-nw)//2
+     can.paste(rs,(x,0))
+   except:pass
+  # bottom black panel
+  d.rectangle([0,top_h,W,H],fill=(0,0,0))
+  d.line([(20,top_h+6),(W-20,top_h+6)],fill=(0,230,90),width=3)
+  try:
+   bf=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",78)
+   bm=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",24)
+   bs=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",20)
+   bb=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",18)
+  except:bf=bm=bs=bb=ImageFont.load_default()
+  # teams + score
+  d.text((30,top_h+18),h[:20].upper(),font=bm,fill=(255,255,255))
+  d.text((W-240,top_h+18),a[:20].upper(),font=bm,fill=(255,255,255))
+  score_txt=f"{hs} - {asc}"
+  d.text((W//2-85,top_h+8),score_txt,font=bf,fill=(255,255,255))
+  d.text((W//2-18,top_h+92),"FT",font=bb,fill=(0,230,90))
+  # scorers split
+  home_goals=[g for g in goals if g["team"]=="home"]
+  away_goals=[g for g in goals if g["team"]=="away"]
+  y1=top_h+120
+  for g in home_goals[:5]:
+   txt=f"{g['min']}' | {g['scorer'][:18]} {g['extra']}".strip()
+   d.text((28,y1),txt,font=bs,fill=(230,230,230));y1+=26
+  y2=top_h+120
+  for g in away_goals[:5]:
+   txt=f"{g['scorer'][:18]} {g['extra']} | {g['min']}'".strip()
+   d.text((W//2+18,y2),txt,font=bs,fill=(210,210,210));y2+=26
+  # badge
+  bw,bh=310,34;bx=(W-bw)//2;by=H-42
+  d.rounded_rectangle([bx,by,bx+bw,by+bh],radius=17,fill=(0,210,85))
+  d.text((bx+16,by+6),"🟢 UNFILTERED SCORES",font=bs,fill=(255,255,255))
   b=BytesIO();can.save(b,format="JPEG",quality=96);b.seek(0);return b
  except:return None
 def post_fb(msg,img):
@@ -287,20 +338,47 @@ def process_live():
       k=f"ft_{eid}_{hs}_{asc}"
       lb="✅ FULL TIME"
      if not is_posted(k):
+      ft_goals=[]
+      for d in details:
+       if not isinstance(d,dict):continue
+       t=d.get("type",{}).get("text","") if isinstance(d.get("type",{}),dict) else ""
+       if t not in ["Goal","Own Goal","Penalty - Scored"]:continue
+       inv=safe_list(d.get("athletesInvolved",[]))
+       sc=inv[0].get("displayName","") if inv and isinstance(inv[0],dict) else ""
+       mn=d.get("clock",{}).get("displayValue","") if isinstance(d.get("clock",{}),dict) else ""
+       tid=d.get("team",{}).get("id","") if isinstance(d.get("team",{}),dict) else ""
+       team_side="home" if tid==home.get("team",{}).get("id","") else "away"
+       extra="(P)" if "Penalty" in t else "(OG)" if "Own" in t else ""
+       ft_goals.append({"scorer":sc,"min":mn.replace("'",""),"extra":extra,"team":team_side})
       img=None
+      real_url=None
       if is_ft:
-       try:
-        feed=feedparser.parse("https://www.skysports.com/rss/12040")
-        for entry in feed.entries[:15]:
-         tlw=entry.title.lower()
-         hw=h.lower().split()[-1]
-         aw=a.lower().split()[-1]
-         if hw in tlw and aw in tlw:
-          ru=get_img(entry)
-          if ru:img=make_real(ru);break
-       except:pass
-      if not img:img=make_hd([lb.replace("⏸️ ","").replace("✅ ",""),f"{h} {hs}-{asc}",a])
-      msg=f"{lb}\n{h} {hs}-{asc} {a}\n\nFollow 🟢 UNFILTERED SCORES{HT}"
+       # EXHAUST ALL SOURCES
+       for feed_url in ["https://www.skysports.com/rss/12040","http://feeds.bbci.co.uk/sport/football/rss.xml"]:
+        try:
+         feed=feedparser.parse(feed_url)
+         for entry in feed.entries[:20]:
+          tlw=entry.title.lower()
+          hw=h.lower().split()[-1]
+          aw=a.lower().split()[-1]
+          if hw in tlw and aw in tlw:
+           ru=get_img(entry)
+           if ru:real_url=ru;break
+         if real_url:break
+        except:continue
+      if is_ft:
+       img=make_ft_final(h,a,hs,asc,ft_goals,real_url)
+      if not img:
+       if is_ht:
+        img=make_hd([lb.replace("⏸️ ",""),f"{h} {hs}-{asc}",a])
+       else:
+        lines=[lb.replace("✅ ",""),f"{h} {hs}-{asc} {a}"]
+        for g in ft_goals[:4]:lines.append(f"{g['min']}' {g['scorer']} {g['extra']}")
+        img=make_hd(lines)
+      scorers_txt=""
+      if ft_goals:
+       scorers_txt="\n"+" | ".join([f"{g['min']}' {g['scorer']}{g['extra']}" for g in ft_goals])
+      msg=f"{lb}\n{h} {hs}-{asc} {a}{scorers_txt}\n\nFollow 🟢 UNFILTERED SCORES{HT}"
       if post_fb(msg,img):mark(k);cnt+=1
    except:continue
  return cnt
