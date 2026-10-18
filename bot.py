@@ -215,7 +215,6 @@ def process_live():
     h=home.get("team",{}).get("displayName","Home");a=away.get("team",{}).get("displayName","Away")
     eid=ev.get("id","");hs,asc=get_score(comps)
     details=safe_list(comp.get("details",[]))
-    # PRE MATCH LINEUP
     if stype=="pre" or "SCHEDULED" in nstate:
      k=f"lineup_{eid}"
      if not is_posted(k):
@@ -224,14 +223,12 @@ def process_live():
        img=make_lineup(h,a,ld)
        msg=f"📋 LINEUPS + BENCH\n{h} vs {a}\n\n{h}: {', '.join([n.split('(')[0][:20] for n in ld['home']['xi'][:11]])}\nBench: {', '.join(ld['home']['bench'][:4])}\n\n{a}: {', '.join([n.split('(')[0][:20] for n in ld['away']['xi'][:11]])}\nBench: {', '.join(ld['away']['bench'][:4])}\n\nWho wins? 👇 Follow 🟢 UNFILTERED SCORES{HT}"
        if post_fb(msg,img):mark(k);cnt+=1
-    # KICKOFF - FIXED NO FAKE HT
     if stype=="in":
      k=f"kickoff_{eid}"
      if not is_posted(k):
       img=make_kick(h,a)
       msg=f"🔥 KICK OFF!\n{h} vs {a}\nLIVE NOW!\n\nPredict? 👇 Follow 🟢 UNFILTERED SCORES{HT}"
       if post_fb(msg,img):mark(k);cnt+=1
-    # LIVE EVENTS - GOAL, VAR, RED, PEN MISS
     if stype=="in":
      for d in details:
       if not isinstance(d,dict):continue
@@ -243,11 +240,9 @@ def process_live():
       sc=inv[0].get("displayName","") if inv and isinstance(inv[0],dict) else ""
       mn=d.get("clock",{}).get("displayValue","") if isinstance(d.get("clock",{}),dict) else ""
       t_low=t.lower()
-      # GOAL
       if t=="Goal":
        k=f"goal_{eid}_{did}"
        if is_posted(k):continue
-       # get running score from details order is not reliable, use current score
        msg=f"⚽ GOAL! {mn}'\n{h} {hs}-{asc} {a}\nScorer: {sc}\n\n🟢 UNFILTERED SCORES{HT}"
        img=make_hd([f"GOAL {mn}'",f"{h} {hs}-{asc}",a,sc])
        if post_fb(msg,img):mark(k);cnt+=1;time.sleep(1)
@@ -281,7 +276,6 @@ def process_live():
        msg=f"📺 VAR REVIEW! {mn}'\n{t}\n{h} {hs}-{asc} {a}\n{sc}\n\n🟢 UNFILTERED SCORES{HT}"
        img=make_hd([f"VAR {mn}'",t[:30],f"{h} {hs}-{asc}"])
        if post_fb(msg,img):mark(k);cnt+=1
-    # HT / FT - FIXED NO FAKE
     s_low=status.lower();n_low=nstate.lower()
     is_ht=s_low=="halftime" or n_low=="status_halftime"
     is_ft=s_low in ["final","full time","ft"] or n_low in ["status_final","status_full_time"]
@@ -299,4 +293,42 @@ def process_live():
         feed=feedparser.parse("https://www.skysports.com/rss/12040")
         for entry in feed.entries[:15]:
          tlw=entry.title.lower()
-         if h.split()[-1].
+         hw=h.lower().split()[-1]
+         aw=a.lower().split()[-1]
+         if hw in tlw and aw in tlw:
+          ru=get_img(entry)
+          if ru:img=make_real(ru);break
+       except:pass
+      if not img:img=make_hd([lb.replace("⏸️ ","").replace("✅ ",""),f"{h} {hs}-{asc}",a])
+      msg=f"{lb}\n{h} {hs}-{asc} {a}\n\nFollow 🟢 UNFILTERED SCORES{HT}"
+      if post_fb(msg,img):mark(k);cnt+=1
+   except:continue
+ return cnt
+def process_news():
+ try:
+  feeds=[("BBC","http://feeds.bbci.co.uk/sport/football/rss.xml"),("Sky","https://www.skysports.com/rss/12040")]
+  for src,fu in feeds:
+   feed=feedparser.parse(fu)
+   for entry in feed.entries[:10]:
+    title=entry.get("title","")
+    if not title or not is_fb(title):continue
+    k=f"news_{title[:80]}"
+    if is_posted(k):continue
+    ri=get_img(entry)
+    if not ri:continue
+    ib=make_real(ri)
+    if not ib:continue
+    msg=f"🚨 {title}\n\nFollow 🟢 UNFILTERED SCORES ⚽\nSource: {src}{HT}"
+    if post_fb(msg,ib):mark(k);return 1
+ except:pass
+ return 0
+if __name__=="__main__":
+ if len(FB_TOKEN)<50:exit(0)
+ start=time.time()
+ for i in range(25):
+  try:
+   process_live()
+   if i%2==0:process_news()
+  except:pass
+  if time.time()-start>550:break
+  time.sleep(20)
