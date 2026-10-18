@@ -1,13 +1,17 @@
-name: Unfiltered Scores LIVE V23 FIXED
+name: Unfiltered Scores V24 - 10M SAFE FAST
 on:
   schedule:
-    - cron: '*/5 * * * *'
+    - cron: '*/10 * * * *'
   workflow_dispatch:
+
+concurrency:
+  group: unfiltered-live-v24
+  cancel-in-progress: true
 
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 58
+    timeout-minutes: 9
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -15,15 +19,16 @@ jobs:
           python-version: '3.11'
       - name: Install deps
         run: pip install requests pillow feedparser
-      - name: Run Bot V23 FIXED
+      - name: Run Bot V24 - 10M Loop
         env:
           FB_TOKEN: ${{ secrets.FB_TOKEN }}
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
         run: python bot.py
       - name: Save State
+        if: always()
         run: |
           git config user.name "bot"
           git config user.email "bot@unfiltered.com"
           git add state.json || true
-          git commit -m "state" || true
+          git commit -m "state update" || true
           git push || true
