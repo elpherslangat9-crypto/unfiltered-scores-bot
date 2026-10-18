@@ -1,4 +1,4 @@
-# V23 UNFILTERED SCORES - PERMANENT FIX - NO API KEY - FB PERMANENT TOKEN
+# V23 UNFILTERED SCORES - REAL CLEAN PHOTO - NO TITLE ON IMAGE
 import os, json, time, traceback, requests
 from datetime import datetime
 from io import BytesIO
@@ -7,7 +7,7 @@ import feedparser
 
 FB_TOKEN = os.getenv("FB_TOKEN", "").strip()
 FB_PAGE_ID = os.getenv("FB_PAGE_ID", "1293090263895541").strip()
-print(f"=== V23 UNFILTERED PERMANENT FIX ===")
+print(f"=== V23 REAL CLEAN PHOTO ===")
 print(f"PAGE_ID={FB_PAGE_ID} TOKEN_LEN={len(FB_TOKEN)}")
 
 STATE_FILE = "state.json"
@@ -17,23 +17,17 @@ def load_state():
             return json.load(f)
     except:
         return {"posted": [], "last_news": ""}
-
 def save_state(s):
     try:
         with open(STATE_FILE, "w") as f:
             json.dump(s, f)
     except: pass
-
 state = load_state()
 
-# --- FIX FOR YOUR ERROR ---
 def safe_list(x):
-    if isinstance(x, list):
-        return x
-    if isinstance(x, dict):
-        return [x]
-    if not x:
-        return []
+    if isinstance(x, list): return x
+    if isinstance(x, dict): return [x]
+    if not x: return []
     return [x]
 
 def get_brand():
@@ -52,8 +46,7 @@ ESPN_LEAGUES = [
 def fetch_json(url):
     try:
         r = requests.get(url, timeout=15, headers={"User-Agent":"Mozilla/5.0"})
-        if r.status_code==200:
-            return r.json()
+        if r.status_code==200: return r.json()
     except Exception as e:
         print(f"FETCH ERR {e}")
     return None
@@ -71,7 +64,6 @@ def make_hd_image(lines):
         b_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 26)
     except:
         b_big=b_mid=b_small=ImageFont.load_default()
-    # GREEN WATERMARK TOP - YOUR BRAND
     draw.rectangle([0,0,W,88], fill=(0,200,83))
     draw.text((35,20), get_brand(), font=b_mid, fill=(255,255,255))
     y=130
@@ -84,6 +76,60 @@ def make_hd_image(lines):
     img.save(bio, format="JPEG", quality=95)
     bio.seek(0)
     return bio
+
+# === REAL IMAGE - CLEAN NO TITLE ===
+def get_image_from_entry(entry):
+    try:
+        if hasattr(entry, 'media_content'):
+            for m in entry.media_content:
+                if m.get('url'): return m['url']
+        if hasattr(entry, 'enclosures') and entry.enclosures:
+            href = entry.enclosures[0].get('href') or entry.enclosures[0].get('url')
+            if href: return href
+        if hasattr(entry, 'media_thumbnail'):
+            if entry.media_thumbnail[0].get('url'): return entry.media_thumbnail[0].url
+        desc = entry.get('summary','') + entry.get('description','')
+        if 'src="' in desc:
+            start = desc.find('src="') + 5
+            end = desc.find('"', start)
+            if start>5 and end>start:
+                u = desc[start:end]
+                if u.startswith("http"): return u
+    except: pass
+    return None
+
+def make_real_image_news(real_img_url):
+    try:
+        r = requests.get(real_img_url, timeout=15, headers={"User-Agent":"Mozilla/5.0"})
+        if r.status_code != 200: return None
+        img = Image.open(BytesIO(r.content)).convert("RGB")
+        W,H = 1280,720
+        iw, ih = img.size
+        ratio = max(W/iw, H/ih)
+        nw, nh = int(iw*ratio), int(ih*ratio)
+        img = img.resize((nw, nh), Image.LANCZOS)
+        left = (nw - W)//2
+        top = (nh - H)//2
+        img = img.crop((left, top, left+W, top+H))
+        draw = ImageDraw.Draw(img, "RGBA")
+        # ONLY BRAND - NO TITLE!
+        draw.rectangle([0,0,W,88], fill=(0,200,83,230))
+        try:
+            b_mid = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
+            b_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 20)
+        except:
+            b_mid=b_small=ImageFont.load_default()
+        draw.text((35,22), get_brand(), font=b_mid, fill=(255,255,255))
+        # Small source bottom right clean
+        draw.rectangle([W-380, H-50, W, H], fill=(0,0,0,120))
+        draw.text((W-360, H-35), "UNFILTERED SCORES", font=b_small, fill=(255,255,255))
+        bio=BytesIO()
+        img.save(bio, format="JPEG", quality=93)
+        bio.seek(0)
+        return bio
+    except Exception as e:
+        print(f"REAL IMG ERR {e}")
+        return None
 
 def post_fb(msg, img_bio):
     if len(FB_TOKEN)<50:
@@ -128,34 +174,25 @@ def process_live():
                 h_score=home.get("score","0")
                 a_score=away.get("score","0")
                 ev_id=ev.get("id","")
-
-                # LINEUPS - when match starts
                 if state_type=="in" or status=="In Progress":
-                    # lineup key once per match
                     key_line=f"lineup_{ev_id}"
                     if not is_posted(key_line):
-                        # try get details for lineup
                         msg=f"🔥 LINEUP ALERT\n{h_team} vs {a_team}\nScore: {h_score}-{a_score}\nKICK-OFF LIVE!\n\n{get_brand()} - Fastest!"
                         img=make_hd_image([f"{h_team} vs {a_team}", f"{h_score}-{a_score}", "LIVE NOW", "LINEUPS OUT"])
                         if post_fb(msg, img):
                             mark(key_line)
                             count+=1
-
-                # DETAILS - GOALS, RED, PENALTY - FIXED SAFE
                 for d in safe_list(comp.get("details",[])):
                     if not isinstance(d, dict): continue
                     t = d.get("type",{})
                     t_text = t.get("text","") if isinstance(t, dict) else str(t)
                     minute = d.get("clock",{}).get("displayValue","") if isinstance(d.get("clock",{}), dict) else ""
-                    # athletes
                     scorer=""; assist=""
                     inv = safe_list(d.get("athletesInvolved",[]))
                     if inv:
                         scorer = inv[0].get("displayName","") if isinstance(inv[0], dict) else ""
                         if len(inv)>1:
                             assist = inv[1].get("displayName","")
-
-                    # GOAL
                     if t_text in ["Goal","Own Goal","Penalty - Scored"]:
                         key=f"goal_{ev_id}_{d.get('id','')}_{minute}"
                         if is_posted(key): continue
@@ -167,8 +204,6 @@ def process_live():
                             mark(key)
                             count+=1
                             time.sleep(2)
-
-                    # RED CARD
                     if t_text in ["Red Card","Yellow-Red Card"]:
                         key=f"red_{ev_id}_{d.get('id','')}"
                         if is_posted(key): continue
@@ -177,8 +212,6 @@ def process_live():
                         if post_fb(msg, img):
                             mark(key)
                             count+=1
-
-                # HT / FT
                 if status in ["Halftime","Full Time","Final","FT"]:
                     key=f"{status}_{ev_id}_{h_score}_{a_score}"
                     if is_posted(key): continue
@@ -188,7 +221,6 @@ def process_live():
                     if post_fb(msg, img):
                         mark(key)
                         count+=1
-
             except Exception as e:
                 print(f"EV ERR {e}")
                 continue
@@ -197,24 +229,36 @@ def process_live():
     return count
 
 def process_news():
-    # Breaking news - ESPN RSS free, no API key
     try:
-        feeds=["http://www.espn.com/espn/rss/soccer/news","https://www.skysports.com/rss/12040"]
-        for feed_url in feeds[:1]:
+        feeds=[
+            ("BBC Sport", "http://feeds.bbci.co.uk/sport/football/rss.xml"),
+            ("Sky Sports", "https://www.skysports.com/rss/12040"),
+            ("ESPN FC", "http://www.espn.com/espn/rss/soccer/news")
+        ]
+        for source_name, feed_url in feeds:
             feed=feedparser.parse(feed_url)
-            for entry in feed.entries[:3]:
+            for entry in feed.entries[:6]:
                 title=entry.get("title","")
                 if not title: continue
-                key=f"news_{title[:60]}"
+                key=f"news_{title[:80]}"
                 if is_posted(key): continue
-                if any(w in title.lower() for w in ["transfer","injury","breaking","official","signs","deal"]):
-                    msg=f"🚨 BREAKING NEWS\n{title}\n\n{get_brand()} - Fastest Football News!"
-                    img=make_hd_image([ "BREAKING NEWS", title[:45], title[45:90] ])
-                    if post_fb(msg, img):
-                        mark(key)
-                        return 1
+                real_img_url = get_image_from_entry(entry)
+                img_bio = None
+                if real_img_url:
+                    print(f"Trying real image: {real_img_url[:100]}")
+                    img_bio = make_real_image_news(real_img_url)
+                if not img_bio:
+                    print("No real image, using HD fallback CLEAN")
+                    img_bio = make_hd_image(["FOOTBALL NEWS"])
+                # Caption has title, photo CLEAN
+                msg=f"🚨 {title}\n\nFollow {get_brand()} for fastest football news! ⚽\n\nSource: {source_name}"
+                if post_fb(msg, img_bio):
+                    mark(key)
+                    print(f"NEWS POSTED CLEAN REAL: {title}")
+                    return 1
     except Exception as e:
         print(f"NEWS ERR {e}")
+        traceback.print_exc()
     return 0
 
 if __name__=="__main__":
@@ -222,15 +266,15 @@ if __name__=="__main__":
         print("ERROR: Set FB_TOKEN + FB_PAGE_ID in Secrets")
         exit(0)
     start=time.time()
-    for i in range(120): # 60 mins
+    for i in range(18):
         try:
             process_live()
-            if i%4==0:
+            if i%3==0:
                 process_news()
         except Exception as e:
             print(f"MAIN ERR {e}")
             traceback.print_exc()
-        if time.time()-start>3300:
+        if time.time()-start>540:
             break
         time.sleep(30)
-    print("DONE V23")
+    print("DONE V23 CLEAN REAL IMAGE")
