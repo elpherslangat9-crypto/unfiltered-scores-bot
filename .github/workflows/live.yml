@@ -1,4 +1,4 @@
-name: Unfiltered Scores V24 - 10M SAFE FAST
+name: Unfiltered Scores V23 - 10M SAFE FAST
 on:
   schedule:
     - cron: '*/10 * * * *'
