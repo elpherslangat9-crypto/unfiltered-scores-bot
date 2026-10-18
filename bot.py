@@ -1,4 +1,5 @@
-# V23 FINAL FIXED - REAL LINEUPS IN PHOTO - CORRECT OWN GOAL 1-0 - BIG BADGE - FOOTBALL ONLY
+# V23 FINAL FIXED - CORRECT SCORES - FOOTBALL ONLY - SHORT BADGE - FULL PHOTO - NO HIGHLIGHTS
+# FIXED: REAL LINEUPS VISIBLE - BLACK ON WHITE
 import os, json, time, requests, re
 from datetime import datetime, timezone
 from io import BytesIO
@@ -7,7 +8,7 @@ import feedparser
 
 FB_TOKEN = os.getenv("FB_TOKEN", "").strip()
 FB_PAGE_ID = os.getenv("FB_PAGE_ID", "1293090263895541").strip()
-print("=== V23 FINAL FIXED - LINEUPS EDITION ===")
+print("=== V23 FINAL FIXED ===")
 
 STATE_FILE = "state.json"
 def load_state():
@@ -41,14 +42,17 @@ ESPN_LEAGUES = [
 ]
 
 NON_FOOTBALL_WORDS = ["darts","van gerwen","snooker","cricket","rugby","tennis","nba","nfl","golf","f1","formula 1","boxing","mma","ufc","usyk","dubois","trilogy","fight","wrestling","athletics"]
-FOOTBALL_MUST_HAVE = ["football","premier","arsenal","chelsea","liverpool","man utd","manchester city","man city","tottenham","barcelona","real madrid","atletico","bayern","dortmund","psg","juventus","ac milan","inter","serie a","la liga","bundesliga","ligue 1","efl","champions league","europa","fa cup","carabao","transfer","goal","striker","midfielder","defender","manager","coach","uefa","fifa","brighton","palace","betis"]
+FOOTBALL_MUST_HAVE = ["football","premier","arsenal","chelsea","liverpool","man utd","manchester city","man city","tottenham","barcelona","real madrid","atletico","bayern","dortmund","psg","juventus","ac milan","inter","serie a","la liga","bundesliga","ligue 1","efl","champions league","europa","fa cup","carabao","transfer","goal","striker","midfielder","defender","manager","coach","uefa","fifa","leeds","brentford","club","league","betis"]
 
 def is_football_news(title):
     t = title.lower()
     for bad in NON_FOOTBALL_WORDS:
-        if bad in t: return False
+        if bad in t:
+            print(f"BLOCKED NON-FOOTBALL: {title}")
+            return False
     for good in FOOTBALL_MUST_HAVE:
-        if good in t: return True
+        if good in t:
+            return True
     print(f"BLOCKED NOT FOOTBALL: {title}")
     return False
 
@@ -59,43 +63,43 @@ def fetch_json(url):
     except: pass
     return None
 
-# ===== GOAL / RED / HT / FT IMAGE - BIG BADGE =====
 def make_hd_image(lines):
     W,H = 1280,720
-    img = Image.new("RGB", (W,H), (10,20,45))
+    img = Image.new("RGB", (W,H), (8,12,28))
     draw = ImageDraw.Draw(img)
     for y in range(H):
-        r = int(10 + y*0.08)
-        g = int(20 + y*0.15)
-        b = int(45 + y*0.28)
+        r = int(8 + y*0.12)
+        g = int(12 + y*0.18)
+        b = int(28 + y*0.25)
         draw.line([(0,y),(W,y)], fill=(r,g,b))
     try:
         b_big = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 60)
         b_mid = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 38)
-        b_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 24)
-    except: b_big=b_mid=b_small=ImageFont.load_default()
+        b_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
+        b_mini = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
+    except: b_big=b_mid=b_small=b_mini=ImageFont.load_default()
     y=100
     for i,line in enumerate(lines[:4]):
         f = b_big if i==0 else b_mid
-        fill = (255,255,255) if i<2 else (210,225,255)
-        draw.text((55,y), line[:58], font=f, fill=fill)
-        y+=92
+        fill = (255,255,255) if i<2 else (200,220,255)
+        draw.text((55,y), line[:55], font=f, fill=fill)
+        y+=88
         if i==0:
-            draw.line([(55,y-20),(340,y-20)], fill=(0,230,90), width=5)
-    # BIG DECORATED BADGE - VISIBLE
-    bw, bh = 420, 52
+            draw.line([(55,y-18),(320,y-18)], fill=(0,230,90), width=4)
+    # SHORT FLOATING PILL - NO BLACK STRIP
+    bw, bh = 300, 38
     bx = (W - bw)//2
-    by = H - 72
-    draw.rounded_rectangle([bx, by+6, bx+bw, by+bh+6], radius=26, fill=(0,0,0,120))
-    draw.rounded_rectangle([bx, by, bx+bw, by+bh], radius=26, fill=(0,218,92))
-    draw.rounded_rectangle([bx, by, bx+bw, by+bh], radius=26, outline=(255,255,255,180), width=3)
-    draw.text((bx+42, by+11), "🟢 UNFILTERED SCORES", font=b_small, fill=(255,255,255))
+    by = H - 55
+    draw.ellipse([bx-10, by+12, bx+bw+10, by+bh+8], fill=(0,0,0,80))
+    draw.rounded_rectangle([bx, by, bx+bw, by+bh], radius=19, fill=(0,215,95))
+    draw.rounded_rectangle([bx, by, bx+bw, by+bh], radius=19, outline=(255,255,255,90), width=2)
+    draw.text((bx+26, by+8), "🟢 UNFILTERED SCORES", font=b_small, fill=(255,255,255))
     bio=BytesIO()
     img.save(bio, format="JPEG", quality=97, subsampling=0)
     bio.seek(0)
     return bio
 
-# ===== REAL LINEUPS IMAGE - BOTH TEAMS XI IN PHOTO =====
+# ===== ADDED: FETCH REAL LINEUPS FROM ESPN SUMMARY =====
 def fetch_real_lineups(event_id):
     for league_url in ESPN_LEAGUES:
         try:
@@ -103,7 +107,6 @@ def fetch_real_lineups(event_id):
             summary_url = f"https://site.api.espn.com/apis/site/v2/sports/soccer/{league_code}/summary?event={event_id}"
             data = fetch_json(summary_url)
             if not data: continue
-            # Try rosters
             rosters = data.get("rosters", [])
             if len(rosters) >= 2:
                 home_xi = []
@@ -114,7 +117,7 @@ def fetch_real_lineups(event_id):
                     for a in athletes:
                         if isinstance(a, dict):
                             name = a.get("athlete",{}).get("displayName","") or a.get("displayName","")
-                            pos = a.get("position",{}).get("abbreviation","") or a.get("position","")
+                            pos = a.get("position",{}).get("abbreviation","") or ""
                             if name: names.append(f"{name} ({pos})" if pos else name)
                     if idx==0: home_xi = names
                     else: away_xi = names
@@ -123,6 +126,7 @@ def fetch_real_lineups(event_id):
         except: continue
     return None, None
 
+# ===== ADDED: VISIBLE LINEUP IMAGE - BLACK TEXT ON WHITE BOXES =====
 def make_lineup_image(h_team, a_team, h_xi, a_xi):
     W,H = 1280,720
     img = Image.new("RGB", (W,H), (8,14,35))
@@ -132,7 +136,7 @@ def make_lineup_image(h_team, a_team, h_xi, a_xi):
     try:
         b_big = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 34)
         b_mid = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
-        b_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 18)
+        b_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 19)
         b_tiny = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
     except: b_big=b_mid=b_small=b_tiny=ImageFont.load_default()
     
@@ -140,25 +144,23 @@ def make_lineup_image(h_team, a_team, h_xi, a_xi):
     draw.line([(30,58),(520,58)], fill=(0,230,90), width=4)
     draw.text((30,68), "STARTING XI - KICK OFF", font=b_tiny, fill=(0,230,90))
     
-    # Home box
+    # FIXED: SOLID WHITE + BLACK TEXT = FULLY VISIBLE
     y_h = 102
-    draw.rounded_rectangle([18, y_h-8, 625, H-78], radius=14, fill=(255,255,255,18))
-    draw.text((38, y_h), h_team[:30].upper(), font=b_mid, fill=(255,230,0))
+    draw.rounded_rectangle([18, y_h-8, 625, H-78], radius=14, fill=(255,255,255))
+    draw.text((38, y_h), h_team[:30].upper(), font=b_mid, fill=(0,0,0))
     y_h+=30
     for i,name in enumerate(h_xi[:11]):
-        draw.text((38, y_h), f"{i+1}. {name}", font=b_small, fill=(225,235,255))
+        draw.text((38, y_h), f"{i+1}. {name}", font=b_small, fill=(10,10,10))
         y_h+=42
     
-    # Away box
     y_a = 102
-    draw.rounded_rectangle([645, y_a-8, 1260, H-78], radius=14, fill=(255,255,255,18))
-    draw.text((665, y_a), a_team[:30].upper(), font=b_mid, fill=(0,220,255))
+    draw.rounded_rectangle([645, y_a-8, 1260, H-78], radius=14, fill=(255,255,255))
+    draw.text((665, y_a), a_team[:30].upper(), font=b_mid, fill=(0,0,0))
     y_a+=30
     for i,name in enumerate(a_xi[:11]):
-        draw.text((665, y_a), f"{i+1}. {name}", font=b_small, fill=(225,235,255))
+        draw.text((665, y_a), f"{i+1}. {name}", font=b_small, fill=(10,10,10))
         y_a+=42
     
-    # Big badge
     bw, bh = 420, 52
     bx = (W - bw)//2
     by = H - 66
@@ -178,13 +180,21 @@ def fetch_og_image(page_url):
         pats = [r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']']
         for pat in pats:
             m = re.search(pat, html, re.I)
-            if m and m.group(1).startswith("http"):
-                return m.group(1)
+            if m:
+                url = m.group(1)
+                if url.startswith("http"):
+                    return url.replace("/480/","/1280/").replace("/320/","/1024/")
     except: pass
     return None
 
 def get_image_from_entry(entry):
     try:
+        if hasattr(entry, 'media_content'):
+            for m in entry.media_content:
+                if m.get('url'): return m['url']
+        if hasattr(entry, 'enclosures') and entry.enclosures:
+            href = entry.enclosures[0].get('href') or entry.enclosures[0].get('url')
+            if href and href.startswith("http"): return href
         link = entry.get("link","")
         if link:
             og = fetch_og_image(link)
@@ -204,22 +214,29 @@ def make_real_image_news(real_img_url):
         nw, nh = int(iw*ratio), int(ih*ratio)
         resized = orig.resize((nw, nh), Image.LANCZOS)
         resized = resized.filter(ImageFilter.UnsharpMask(radius=1.2, percent=80, threshold=2))
-        canvas.paste(resized, ((W-nw)//2,(H-nh)//2))
+        x = (W - nw)//2
+        y = (H - nh)//2
+        canvas.paste(resized, (x,y))
         draw = ImageDraw.Draw(canvas, "RGBA")
         try:
-            b_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 22)
-        except: b_small=ImageFont.load_default()
-        bw, bh = 400, 48
+            b_small = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 20)
+            b_mini = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 16)
+        except: b_small=b_mini=ImageFont.load_default()
+        bw, bh = 300, 36
         bx = (W - bw)//2
-        by = H - 70
-        draw.rounded_rectangle([bx, by, bx+bw, by+bh], radius=24, fill=(0,210,85,235))
-        draw.rounded_rectangle([bx, by, bx+bw, by+bh], radius=24, outline=(255,255,255,160), width=2)
-        draw.text((bx+32, by+10), "🟢 UNFILTERED SCORES", font=b_small, fill=(255,255,255))
+        by = H - bh - 12
+        draw.rounded_rectangle([bx+2, by+2, bx+bw+2, by+bh+2], radius=18, fill=(0,0,0,90))
+        draw.rounded_rectangle([bx, by, bx+bw, by+bh], radius=18, fill=(0,210,85,230))
+        draw.text((bx+20, by+7), "🟢 UNFILTERED SCORES", font=b_small, fill=(255,255,255))
+        draw.rounded_rectangle([W-145, 12, W-12, 36], radius=10, fill=(0,0,0,120))
+        draw.text((W-135, 16), "⚽ LIVE", font=b_mini, fill=(255,255,255))
         bio=BytesIO()
-        canvas.save(bio, format="JPEG", quality=96, subsampling=0)
+        canvas.save(bio, format="JPEG", quality=96, subsampling=0, optimize=True)
         bio.seek(0)
         return bio
-    except: return None
+    except Exception as e:
+        print(f"REAL IMG ERR {e}")
+        return None
 
 def post_fb(msg, img_bio):
     if len(FB_TOKEN)<50: return False
@@ -242,7 +259,7 @@ def mark(k):
     save_state(state)
 
 def process_live():
-    print("Scanning live - CORRECT OG & LINEUPS...")
+    print("Scanning live ALL LEAGUES - CORRECT SCORE...")
     count=0
     today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     for league_url in ESPN_LEAGUES:
@@ -251,7 +268,8 @@ def process_live():
         for ev in data.get("events",[]):
             try:
                 ev_date = ev.get("date","")[:10]
-                if ev_date != today_str: continue
+                if ev_date != today_str:
+                    continue
                 comp=ev.get("competitions",[{}])[0]
                 status=comp.get("status",{}).get("type",{}).get("description","")
                 state_type=comp.get("status",{}).get("type",{}).get("state","")
@@ -263,28 +281,27 @@ def process_live():
                 a_team=away.get("team",{}).get("displayName","Away")
                 ev_id=ev.get("id","")
                 all_details = safe_list(comp.get("details",[]))
-                running_h=0
-                running_a=0
-                timeline=[]
+                running_h = 0
+                running_a = 0
+                goal_timeline = []
                 for d in all_details:
                     if not isinstance(d, dict): continue
                     t = d.get("type",{})
-                    t_text = t.get("text","") if isinstance(t, dict) else ""
+                    t_text = t.get("text","") if isinstance(t, dict) else str(t)
                     clock = d.get("clock",{})
                     minute_raw = clock.get("displayValue","") if isinstance(clock, dict) else ""
                     minute = minute_raw.replace("'", "").replace('"','').strip()
                     team_id = d.get("team",{}).get("id","") if isinstance(d.get("team",{}), dict) else ""
-                    # FIXED: For own goal, team_id is already the team that GETS the goal (Brighton), don't invert
+                    # FIXED OWN GOAL: team_id is already benefiting team, don't invert
                     is_home_goal = (team_id == home.get("team",{}).get("id",""))
                     if t_text in ["Goal","Own Goal","Penalty - Scored"]:
-                        if is_home_goal: running_h+=1
-                        else: running_a+=1
+                        if is_home_goal: running_h += 1
+                        else: running_a += 1
                         inv = safe_list(d.get("athletesInvolved",[]))
                         scorer = inv[0].get("displayName","") if inv and isinstance(inv[0], dict) else ""
                         assist = inv[1].get("displayName","") if len(inv)>1 and isinstance(inv[1], dict) else ""
-                        timeline.append({"id":d.get("id",""), "minute":minute, "h":running_h, "a":running_a, "scorer":scorer, "assist":assist, "type":t_text})
+                        goal_timeline.append({"id":d.get("id",""), "minute":minute, "h":running_h, "a":running_a, "scorer":scorer, "assist":assist, "type":t_text})
 
-                # KICK OFF WITH REAL LINEUPS PHOTO
                 if state_type=="in" or "Half" in status or "In Progress" in status:
                     key_line=f"lineup_{ev_id}"
                     if not is_posted(key_line):
@@ -294,28 +311,45 @@ def process_live():
                             msg=f"🔥 KICK OFF!\n{h_team} vs {a_team}\n\nLINEUPS:\n{h_team}: {', '.join([n.split(' (')[0] for n in h_xi[:11]])}\n\n{a_team}: {', '.join([n.split(' (')[0] for n in a_xi[:11]])}\n\n🟢 UNFILTERED SCORES"
                         else:
                             img=make_hd_image([f"{h_team} vs {a_team}", f"LIVE  {running_h}-{running_a}", "KICK OFF", "LINEUPS CONFIRMED"])
-                            msg=f"🔥 KICK OFF!\n{h_team} vs {a_team}\nLIVE NOW!\n\n🟢 UNFILTERED SCORES - Fastest Live!"
+                            msg=f"🔥 KICK OFF!\n{h_team} vs {a_team}\nLIVE NOW!\n\nFollow 🟢 UNFILTERED SCORES - Fastest Live!"
                         if post_fb(msg, img):
                             mark(key_line)
                             count+=1
 
-                # GOALS WITH CORRECT OG LOGIC
-                for g in timeline:
+                for g in goal_timeline:
                     key=f"goal_{ev_id}_{g['id']}"
                     if is_posted(key): continue
                     if state_type=="post": continue
                     if "Own Goal" in g['type']:
-                        msg=f"⚽ OWN GOAL! {g['minute']}'\n{h_team} {g['h']}-{g['a']} {a_team}\nBy {g['scorer']} (OG)\n\n🟢 UNFILTERED SCORES"
+                        msg=f"⚽ OWN GOAL! {g['minute']}'\n{h_team} {g['h']}-{g['a']} {a_team}\nBy {g['scorer']} (OG)\n\n🟢 UNFILTERED SCORES - Fastest!"
                         img=make_hd_image([f"OWN GOAL! {g['minute']}'", f"{h_team} {g['h']}-{g['a']}", a_team, f"{g['scorer']} OG"])
                     else:
                         goal_type = "PENALTY!" if "Penalty" in g['type'] else "GOAL!"
                         assist_txt = f"\nAssist: {g['assist']}" if g['assist'] else ""
-                        msg=f"⚽ {goal_type} {g['minute']}'\n{h_team} {g['h']}-{g['a']} {a_team}\nScorer: {g['scorer']}{assist_txt}\n\n🟢 UNFILTERED SCORES"
+                        msg=f"⚽ {goal_type} {g['minute']}'\n{h_team} {g['h']}-{g['a']} {a_team}\nScorer: {g['scorer']}{assist_txt}\n\n🟢 UNFILTERED SCORES - Fastest!"
                         img=make_hd_image([f"{goal_type} {g['minute']}'", f"{h_team} {g['h']}-{g['a']}", a_team, g['scorer']])
                     if post_fb(msg, img):
                         mark(key)
                         count+=1
                         time.sleep(2)
+
+                for d in all_details:
+                    if not isinstance(d, dict): continue
+                    t = d.get("type",{})
+                    t_text = t.get("text","") if isinstance(t, dict) else ""
+                    if t_text in ["Red Card","Yellow-Red Card"]:
+                        key=f"red_{ev_id}_{d.get('id','')}"
+                        if is_posted(key): continue
+                        if state_type=="post": continue
+                        inv = safe_list(d.get("athletesInvolved",[]))
+                        scorer = inv[0].get("displayName","") if inv and isinstance(inv[0], dict) else ""
+                        minute = d.get("clock",{}).get("displayValue","") if isinstance(d.get("clock",{}), dict) else ""
+                        minute = minute.replace("'", "").replace('"','').strip()
+                        msg=f"🟥 RED CARD! {minute}'\n{h_team} {running_h}-{running_a} {a_team}\nPlayer: {scorer}\n\n🟢 UNFILTERED SCORES"
+                        img=make_hd_image([f"RED CARD {minute}'", f"{h_team} {running_h}-{running_a}", a_team, scorer])
+                        if post_fb(msg, img):
+                            mark(key)
+                            count+=1
 
                 if status in ["Halftime","Full Time","Final","FT"]:
                     key=f"{status}_{ev_id}_{running_h}_{running_a}"
@@ -334,12 +368,17 @@ def process_live():
 
 def process_news():
     try:
-        feeds=[("BBC Football","http://feeds.bbci.co.uk/sport/football/rss.xml"),("Sky Football","https://www.skysports.com/rss/12040")]
+        feeds=[
+            ("BBC Sport Football", "http://feeds.bbci.co.uk/sport/football/rss.xml"),
+            ("Sky Sports Football", "https://www.skysports.com/rss/12040"),
+        ]
         for source_name, feed_url in feeds:
+            print(f"Checking {source_name}")
             feed=feedparser.parse(feed_url)
-            for entry in feed.entries[:12]:
+            for entry in feed.entries[:15]:
                 title=entry.get("title","")
-                if not title or not is_football_news(title): continue
+                if not title: continue
+                if not is_football_news(title): continue
                 key=f"news_{title[:80]}"
                 if is_posted(key): continue
                 real_img_url = get_image_from_entry(entry)
@@ -349,7 +388,9 @@ def process_news():
                 msg=f"🚨 {title}\n\nFollow 🟢 UNFILTERED SCORES for fastest football news! ⚽\n\nSource: {source_name}"
                 if post_fb(msg, img_bio):
                     mark(key)
+                    print(f"NEWS POSTED: {title}")
                     return 1
+            time.sleep(1)
     except Exception as e:
         print(f"NEWS ERR {e}")
     return 0
@@ -359,11 +400,12 @@ if __name__=="__main__":
         print("ERROR: Set FB_TOKEN")
         exit(0)
     start=time.time()
-    print("V23 START - Lineups + Correct OG 1-0")
-    for i in range(28):
+    print("V23 START - Correct scores, football only, never miss")
+    for i in range(25):
         try:
             process_live()
-            if i%3==0: process_news()
+            if i%2==0:
+                process_news()
         except Exception as e:
             print(f"MAIN ERR {e}")
         if time.time()-start>550: break
