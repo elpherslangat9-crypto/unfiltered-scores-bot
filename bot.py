@@ -214,18 +214,8 @@ def process_live():
     away=next((c for c in comps if c.get("homeAway")=="away"),comps[1])
     h=home.get("team",{}).get("displayName","Home");a=away.get("team",{}).get("displayName","Away")
     eid=ev.get("id","");hs,asc=get_score(comps)
-    details=safe_list(comp.get("details",[]));rh=0;ra=0;tl=[]
-    for d in details:
-     if not isinstance(d,dict):continue
-     t=d.get("type",{}).get("text","") if isinstance(d.get("type",{}),dict) else ""
-     if t in ["Goal","Own Goal","Penalty - Scored"]:
-      tid=d.get("team",{}).get("id","") if isinstance(d.get("team",{}),dict) else ""
-      is_h=tid==home.get("team",{}).get("id","")
-      if is_h:rh+=1
-      else:ra+=1
-      inv=safe_list(d.get("athletesInvolved",[]));sc=inv[0].get("displayName","") if inv and isinstance(inv[0],dict) else ""
-      mn=d.get("clock",{}).get("displayValue","") if isinstance(d.get("clock",{}),dict) else ""
-      tl.append({"id":d.get("id",""),"minute":mn.replace("'",""),"h":rh,"a":ra,"scorer":sc,"type":t})
+    details=safe_list(comp.get("details",[]))
+    # PRE MATCH LINEUP
     if stype=="pre" or "SCHEDULED" in nstate:
      k=f"lineup_{eid}"
      if not is_posted(k):
@@ -234,72 +224,79 @@ def process_live():
        img=make_lineup(h,a,ld)
        msg=f"📋 LINEUPS + BENCH\n{h} vs {a}\n\n{h}: {', '.join([n.split('(')[0][:20] for n in ld['home']['xi'][:11]])}\nBench: {', '.join(ld['home']['bench'][:4])}\n\n{a}: {', '.join([n.split('(')[0][:20] for n in ld['away']['xi'][:11]])}\nBench: {', '.join(ld['away']['bench'][:4])}\n\nWho wins? 👇 Follow 🟢 UNFILTERED SCORES{HT}"
        if post_fb(msg,img):mark(k);cnt+=1
-    if stype=="in" or "Half" in status or "In Progress" in status:
+    # KICKOFF - FIXED NO FAKE HT
+    if stype=="in":
      k=f"kickoff_{eid}"
      if not is_posted(k):
       img=make_kick(h,a)
       msg=f"🔥 KICK OFF!\n{h} vs {a}\nLIVE NOW!\n\nPredict? 👇 Follow 🟢 UNFILTERED SCORES{HT}"
       if post_fb(msg,img):mark(k);cnt+=1
-     for g in tl:
-      k2=f"goal_{eid}_{g['id']}"
-      if is_posted(k2) or stype=="post":continue
-      if "Own Goal" in g['type']:msg=f"⚽ OWN GOAL! {g['minute']}'\n{h} {g['h']}-{g['a']} {a}\nBy {g['scorer']}\n\n🟢 UNFILTERED SCORES{HT}";img=make_hd([f"OWN GOAL {g['minute']}'",f"{h} {g['h']}-{g['a']}",a,g['scorer']])
-      else:
-       gt="PENALTY!" if "Penalty" in g['type'] else "GOAL!";msg=f"⚽ {gt} {g['minute']}'\n{h} {g['h']}-{g['a']} {a}\nScorer: {g['scorer']}\n\n🟢 UNFILTERED SCORES{HT}";img=make_hd([f"{gt} {g['minute']}'",f"{h} {g['h']}-{g['a']}",a,g['scorer']])
-      if post_fb(msg,img):mark(k2);cnt+=1;time.sleep(1)
+    # LIVE EVENTS - GOAL, VAR, RED, PEN MISS
+    if stype=="in":
      for d in details:
       if not isinstance(d,dict):continue
+      did=d.get("id","")
+      if not did:continue
       t=d.get("type",{}).get("text","") if isinstance(d.get("type",{}),dict) else ""
-      if t in ["Red Card","Yellow-Red Card"]:
-       k2=f"red_{eid}_{d.get('id','')}"
-       if is_posted(k2) or stype=="post":continue
-       inv=safe_list(d.get("athletesInvolved",[]));sc=inv[0].get("displayName","") if inv and isinstance(inv[0],dict) else "";mn=d.get("clock",{}).get("displayValue","") if isinstance(d.get("clock",{}),dict) else ""
-       msg=f"🟥 RED CARD! {mn}'\n{h} {hs}-{asc} {a}\n{sc}\n\n🟢 UNFILTERED SCORES{HT}";img=make_hd([f"RED CARD {mn}'",f"{h} {hs}-{asc}",a,sc])
-       if post_fb(msg,img):mark(k2);cnt+=1
-    if "Half" in status or "Final" in status or "FT" in status or "FINAL" in nstate or "HALFTIME" in nstate:
-     k=f"{status}_{eid}_{hs}_{asc}"
+      if not t:continue
+      inv=safe_list(d.get("athletesInvolved",[]))
+      sc=inv[0].get("displayName","") if inv and isinstance(inv[0],dict) else ""
+      mn=d.get("clock",{}).get("displayValue","") if isinstance(d.get("clock",{}),dict) else ""
+      t_low=t.lower()
+      # GOAL
+      if t=="Goal":
+       k=f"goal_{eid}_{did}"
+       if is_posted(k):continue
+       # get running score from details order is not reliable, use current score
+       msg=f"⚽ GOAL! {mn}'\n{h} {hs}-{asc} {a}\nScorer: {sc}\n\n🟢 UNFILTERED SCORES{HT}"
+       img=make_hd([f"GOAL {mn}'",f"{h} {hs}-{asc}",a,sc])
+       if post_fb(msg,img):mark(k);cnt+=1;time.sleep(1)
+      elif t=="Own Goal":
+       k=f"owngoal_{eid}_{did}"
+       if is_posted(k):continue
+       msg=f"⚽ OWN GOAL! {mn}'\n{h} {hs}-{asc} {a}\nBy {sc}\n\n🟢 UNFILTERED SCORES{HT}"
+       img=make_hd([f"OWN GOAL {mn}'",f"{h} {hs}-{asc}",a,sc])
+       if post_fb(msg,img):mark(k);cnt+=1;time.sleep(1)
+      elif t=="Penalty - Scored":
+       k=f"pen_{eid}_{did}"
+       if is_posted(k):continue
+       msg=f"⚽ PENALTY! {mn}'\n{h} {hs}-{asc} {a}\nScorer: {sc}\n\n🟢 UNFILTERED SCORES{HT}"
+       img=make_hd([f"PENALTY {mn}'",f"{h} {hs}-{asc}",a,sc])
+       if post_fb(msg,img):mark(k);cnt+=1;time.sleep(1)
+      elif t=="Penalty - Missed":
+       k=f"penmiss_{eid}_{did}"
+       if is_posted(k):continue
+       msg=f"❌ PENALTY MISSED! {mn}'\n{h} {hs}-{asc} {a}\nMissed: {sc}\n\n🟢 UNFILTERED SCORES{HT}"
+       img=make_hd([f"PEN MISS {mn}'",f"{h} {hs}-{asc}",a,sc])
+       if post_fb(msg,img):mark(k);cnt+=1
+      elif t in ["Red Card","Yellow-Red Card"]:
+       k=f"red_{eid}_{did}"
+       if is_posted(k):continue
+       msg=f"🟥 RED CARD! {mn}'\n{h} {hs}-{asc} {a}\n{sc}\n\n🟢 UNFILTERED SCORES{HT}"
+       img=make_hd([f"RED CARD {mn}'",f"{h} {hs}-{asc}",a,sc])
+       if post_fb(msg,img):mark(k);cnt+=1
+      elif "var" in t_low or "video review" in t_low:
+       k=f"var_{eid}_{did}"
+       if is_posted(k):continue
+       msg=f"📺 VAR REVIEW! {mn}'\n{t}\n{h} {hs}-{asc} {a}\n{sc}\n\n🟢 UNFILTERED SCORES{HT}"
+       img=make_hd([f"VAR {mn}'",t[:30],f"{h} {hs}-{asc}"])
+       if post_fb(msg,img):mark(k);cnt+=1
+    # HT / FT - FIXED NO FAKE
+    s_low=status.lower();n_low=nstate.lower()
+    is_ht=s_low=="halftime" or n_low=="status_halftime"
+    is_ft=s_low in ["final","full time","ft"] or n_low in ["status_final","status_full_time"]
+    if is_ht or is_ft:
+     if is_ht:
+      k=f"ht_{eid}"
+      lb="⏸️ HALFTIME"
+     else:
+      k=f"ft_{eid}_{hs}_{asc}"
+      lb="✅ FULL TIME"
      if not is_posted(k):
-      lb="⏸️ HALFTIME" if "Half" in status or "HALFTIME" in nstate else "✅ FULL TIME"
-      is_ft="Final" in status or "FT" in status or "FINAL" in nstate;img=None
+      img=None
       if is_ft:
        try:
         feed=feedparser.parse("https://www.skysports.com/rss/12040")
         for entry in feed.entries[:15]:
          tlw=entry.title.lower()
-         if h.split()[-1].lower() in tlw and a.split()[-1].lower() in tlw:
-          ru=get_img(entry)
-          if ru:img=make_real(ru);break
-       except:pass
-      if not img:img=make_hd([lb.replace("⏸️ ","").replace("✅ ",""),f"{h} {hs}-{asc}",a])
-      msg=f"{lb}\n{h} {hs}-{asc} {a}\n\nFollow 🟢 UNFILTERED SCORES{HT}"
-      if post_fb(msg,img):mark(k);cnt+=1
-   except:continue
- return cnt
-def process_news():
- try:
-  feeds=[("BBC","http://feeds.bbci.co.uk/sport/football/rss.xml"),("Sky","https://www.skysports.com/rss/12040")]
-  for src,fu in feeds:
-   feed=feedparser.parse(fu)
-   for entry in feed.entries[:10]:
-    title=entry.get("title","")
-    if not title or not is_fb(title):continue
-    k=f"news_{title[:80]}"
-    if is_posted(k):continue
-    ri=get_img(entry)
-    if not ri:continue
-    ib=make_real(ri)
-    if not ib:continue
-    msg=f"🚨 {title}\n\nFollow 🟢 UNFILTERED SCORES ⚽\nSource: {src}{HT}"
-    if post_fb(msg,ib):mark(k);return 1
- except:pass
- return 0
-if __name__=="__main__":
- if len(FB_TOKEN)<50:exit(0)
- start=time.time()
- for i in range(25):
-  try:
-   process_live()
-   if i%2==0:process_news()
-  except:pass
-  if time.time()-start>550:break
-  time.sleep(20)
+         if h.split()[-1].
