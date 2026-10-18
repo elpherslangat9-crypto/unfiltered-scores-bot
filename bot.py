@@ -1,5 +1,5 @@
-# V23 UNFILTERED SCORES - REAL CLEAN PHOTO - NO TITLE ON IMAGE
-import os, json, time, traceback, requests
+# V23 UNFILTERED SCORES - PERMANENT FIX - REAL PHOTO SCRAPER - NO FAKE HD
+import os, json, time, traceback, requests, re
 from datetime import datetime
 from io import BytesIO
 from PIL import Image, ImageDraw, ImageFont
@@ -7,7 +7,7 @@ import feedparser
 
 FB_TOKEN = os.getenv("FB_TOKEN", "").strip()
 FB_PAGE_ID = os.getenv("FB_PAGE_ID", "1293090263895541").strip()
-print(f"=== V23 REAL CLEAN PHOTO ===")
+print(f"=== V24 REAL PHOTO SCRAPER ===")
 print(f"PAGE_ID={FB_PAGE_ID} TOKEN_LEN={len(FB_TOKEN)}")
 
 STATE_FILE = "state.json"
@@ -77,17 +77,42 @@ def make_hd_image(lines):
     bio.seek(0)
     return bio
 
-# === REAL IMAGE - CLEAN NO TITLE ===
+# === REAL IMAGE - WITH OG SCRAPER - FIXED ===
+def fetch_og_image(page_url):
+    try:
+        r = requests.get(page_url, timeout=15, headers={"User-Agent":"Mozilla/5.0"})
+        html = r.text
+        # Look for og:image
+        m = re.search(r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']', html, re.I)
+        if not m:
+            m = re.search(r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']', html, re.I)
+        if m:
+            url = m.group(1)
+            if url.startswith("http"):
+                print(f"OG IMAGE FOUND: {url[:100]}")
+                return url
+        # twitter:image fallback
+        m2 = re.search(r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']', html, re.I)
+        if m2:
+            return m2.group(1)
+    except Exception as e:
+        print(f"OG FETCH ERR {e}")
+    return None
+
 def get_image_from_entry(entry):
     try:
         if hasattr(entry, 'media_content'):
             for m in entry.media_content:
-                if m.get('url'): return m['url']
+                if m.get('url'): 
+                    print(f"MEDIA CONTENT: {m.get('url')[:100]}")
+                    return m['url']
         if hasattr(entry, 'enclosures') and entry.enclosures:
             href = entry.enclosures[0].get('href') or entry.enclosures[0].get('url')
-            if href: return href
+            if href and href.startswith("http"): 
+                return href
         if hasattr(entry, 'media_thumbnail'):
-            if entry.media_thumbnail[0].get('url'): return entry.media_thumbnail[0].url
+            if entry.media_thumbnail[0].get('url'): 
+                return entry.media_thumbnail[0].get('url')
         desc = entry.get('summary','') + entry.get('description','')
         if 'src="' in desc:
             start = desc.find('src="') + 5
@@ -95,13 +120,23 @@ def get_image_from_entry(entry):
             if start>5 and end>start:
                 u = desc[start:end]
                 if u.startswith("http"): return u
-    except: pass
+        # Try to scrape real image from article link
+        link = entry.get("link","")
+        if link:
+            print(f"Scraping OG from: {link[:100]}")
+            og = fetch_og_image(link)
+            if og:
+                return og
+    except Exception as e:
+        print(f"GET IMAGE ERR {e}")
     return None
 
 def make_real_image_news(real_img_url):
     try:
         r = requests.get(real_img_url, timeout=15, headers={"User-Agent":"Mozilla/5.0"})
-        if r.status_code != 200: return None
+        if r.status_code != 200: 
+            print(f"IMG DOWNLOAD FAIL {r.status_code}")
+            return None
         img = Image.open(BytesIO(r.content)).convert("RGB")
         W,H = 1280,720
         iw, ih = img.size
@@ -112,7 +147,7 @@ def make_real_image_news(real_img_url):
         top = (nh - H)//2
         img = img.crop((left, top, left+W, top+H))
         draw = ImageDraw.Draw(img, "RGBA")
-        # ONLY BRAND - NO TITLE!
+        # CLEAN - ONLY BRAND - NO TITLE ON PHOTO AS YOU ASKED
         draw.rectangle([0,0,W,88], fill=(0,200,83,230))
         try:
             b_mid = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 36)
@@ -120,7 +155,7 @@ def make_real_image_news(real_img_url):
         except:
             b_mid=b_small=ImageFont.load_default()
         draw.text((35,22), get_brand(), font=b_mid, fill=(255,255,255))
-        # Small source bottom right clean
+        # Small bottom right
         draw.rectangle([W-380, H-50, W, H], fill=(0,0,0,120))
         draw.text((W-360, H-35), "UNFILTERED SCORES", font=b_small, fill=(255,255,255))
         bio=BytesIO()
@@ -129,6 +164,7 @@ def make_real_image_news(real_img_url):
         return bio
     except Exception as e:
         print(f"REAL IMG ERR {e}")
+        traceback.print_exc()
         return None
 
 def post_fb(msg, img_bio):
@@ -236,26 +272,33 @@ def process_news():
             ("ESPN FC", "http://www.espn.com/espn/rss/soccer/news")
         ]
         for source_name, feed_url in feeds:
+            print(f"Checking {source_name}")
             feed=feedparser.parse(feed_url)
-            for entry in feed.entries[:6]:
+            for entry in feed.entries[:8]:
                 title=entry.get("title","")
                 if not title: continue
                 key=f"news_{title[:80]}"
                 if is_posted(key): continue
+                
                 real_img_url = get_image_from_entry(entry)
-                img_bio = None
-                if real_img_url:
-                    print(f"Trying real image: {real_img_url[:100]}")
-                    img_bio = make_real_image_news(real_img_url)
+                if not real_img_url:
+                    print(f"NO REAL IMAGE for: {title[:50]} - SKIPPING")
+                    continue
+                
+                print(f"Real image URL: {real_img_url[:120]}")
+                img_bio = make_real_image_news(real_img_url)
                 if not img_bio:
-                    print("No real image, using HD fallback CLEAN")
-                    img_bio = make_hd_image(["FOOTBALL NEWS"])
-                # Caption has title, photo CLEAN
+                    print(f"Failed to make image for {title[:50]} - skipping")
+                    continue
+                
                 msg=f"🚨 {title}\n\nFollow {get_brand()} for fastest football news! ⚽\n\nSource: {source_name}"
                 if post_fb(msg, img_bio):
                     mark(key)
-                    print(f"NEWS POSTED CLEAN REAL: {title}")
+                    print(f"NEWS POSTED REAL CLEAN: {title}")
                     return 1
+                else:
+                    print(f"FB POST FAILED for {title[:50]}")
+            time.sleep(1)
     except Exception as e:
         print(f"NEWS ERR {e}")
         traceback.print_exc()
@@ -269,7 +312,7 @@ if __name__=="__main__":
     for i in range(18):
         try:
             process_live()
-            if i%3==0:
+            if i%2==0:
                 process_news()
         except Exception as e:
             print(f"MAIN ERR {e}")
@@ -277,4 +320,4 @@ if __name__=="__main__":
         if time.time()-start>540:
             break
         time.sleep(30)
-    print("DONE V23 CLEAN REAL IMAGE")
+    print("DONE V24 REAL PHOTO SCRAPER")
