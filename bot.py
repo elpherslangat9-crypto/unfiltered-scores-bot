@@ -6,7 +6,7 @@ import feedparser
 FB_TOKEN=os.getenv("FB_TOKEN","").strip()
 FB_PAGE_ID=os.getenv("FB_PAGE_ID","1293090263895541").strip()
 STATE_FILE="state.json"
-RECENT_HOURS=3 # NEW - prevents yesterday spam
+RECENT_HOURS=3
 def load_state():
  try:
   with open(STATE_FILE,"r") as f:return json.load(f)
@@ -21,13 +21,11 @@ def safe_list(x):
  if isinstance(x,dict):return [x]
  if not x:return []
  return [x]
-def is_recent(ev_date_str): # NEW - check if game ended recently
+def is_recent(d):
  try:
-  dt=datetime.fromisoformat(ev_date_str.replace("Z","+00:00"))
-  now=datetime.now(timezone.utc)
-  return (now-dt) < timedelta(hours=RECENT_HOURS+2) # +2 for game duration
+  dt=datetime.fromisoformat(d.replace("Z","+00:00"))
+  return (datetime.now(timezone.utc)-dt) < timedelta(hours=RECENT_HOURS+2)
  except:return True
-
 ESPN_LEAGUES=[
 "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard",
 "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.2/scoreboard",
@@ -82,6 +80,8 @@ def make_hd(lines):
  d.rounded_rectangle([bx,by,bx+bw,by+bh],radius=19,fill=(0,215,95))
  d.text((bx+26,by+8),"🟢 UNFILTERED SCORES",font=bs,fill=(255,255,255))
  b=BytesIO();img.save(b,format="JPEG",quality=97);b.seek(0);return b
+
+# FIXED - no SUB bug, needs both teams
 def fetch_lineups(eid):
  for lu in ESPN_LEAGUES:
   try:
@@ -89,55 +89,66 @@ def fetch_lineups(eid):
    data=fetch_json(f"https://site.api.espn.com/apis/site/v2/sports/soccer/{code}/summary?event={eid}")
    if not data:continue
    rosters=data.get("rosters",[])
-   if len(rosters)>=2:
-    res={"home":{"xi":[],"bench":[]},"away":{"xi":[],"bench":[]}}
-    for idx,ros in enumerate(rosters[:2]):
-     key="home" if idx==0 else "away";xi=[];bench=[]
-     for aa in ros.get("roster",[]):
-      if not isinstance(aa,dict):continue
-      ath=aa.get("athlete",{});name=ath.get("displayName","") or aa.get("displayName","")
-      jer=str(aa.get("jersey","") or "");pos=aa.get("position",{}).get("abbreviation","")
-      disp=f"{jer} {name} ({pos})".strip() if name else ""
-      if aa.get("starter"):xi.append(disp or name)
-      else:bench.append(name)
-     if not xi:
-      xi=[r.get("athlete",{}).get("displayName","") for r in ros.get("roster",[])[:11]]
-      bench=[r.get("athlete",{}).get("displayName","") for r in ros.get("roster",[])[11:18]]
-     res[key]["xi"]=xi[:11];res[key]["bench"]=bench[:7]
-    if res["home"]["xi"] and len(res["home"]["xi"])>=7:return res
+   if len(rosters)<2:continue
+   res={"home":{"xi":[],"bench":[]},"away":{"xi":[],"bench":[]}}
+   for idx,ros in enumerate(rosters[:2]):
+    key="home" if idx==0 else "away";all_p=[]
+    for aa in ros.get("roster",[]):
+     if not isinstance(aa,dict):continue
+     ath=aa.get("athlete",{});name=ath.get("displayName","") or aa.get("displayName","")
+     if not name:continue
+     jer=str(aa.get("jersey","") or "");pos=aa.get("position",{}).get("abbreviation","")
+     if pos=="SUB":pos=""
+     all_p.append({"n":name,"j":jer,"p":pos,"s":aa.get("starter")})
+    has=sum(1 for x in all_p if x["s"] is not None)
+    if has>0:
+     xi=[x for x in all_p if x["s"]];bn=[x for x in all_p if not x["s"]]
+    else:xi=all_p[:11];bn=all_p[11:18]
+    res[key]["xi"]=xi[:11];res[key]["bench"]=bn[:7]
+   if len(res["home"]["xi"])>=7 and len(res["away"]["xi"])>=7:return res
   except:continue
  return None
+
+# NEW - PREMIUM DECORATED LINEUP - SHORT + HD
 def make_lineup(h,a,ld):
- W,H=1280,850
- img=Image.new("RGB",(W,H),(8,14,35))
- d=ImageDraw.Draw(img)
- for y in range(H):d.line([(0,y),(W,y)],fill=(int(8+y*0.1),int(14+y*0.15),int(35+y*0.22)))
+ W,H=1080,1350
+ img=Image.new("RGB",(W,H),(12,20,40))
+ d=ImageDraw.Draw(img,"RGBA")
+ for y in range(H):d.line([(0,y),(W,y)],fill=(int(12+y*0.04),int(20+y*0.07),int(42+y*0.1)))
  try:
-  bb=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",32)
-  bm=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",20)
+  bb=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",38)
+  bm=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",22)
   bs=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",17)
-  bt=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",16)
+  bt=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",14)
  except:bb=bm=bs=bt=ImageFont.load_default()
- d.text((30,16),f"{h} vs {a}",font=bb,fill=(255,255,255))
- d.text((30,62),"★ LINEUPS + BENCH",font=bt,fill=(0,230,90))
+ d.rounded_rectangle([15,12,W-15,95],radius=16,fill=(255,255,255,12))
+ d.text((22,18),f"{h} vs {a}",font=bb,fill=(255,255,255))
+ d.text((22,68),"★ OFFICIAL LINEUPS",font=bt,fill=(0,230,120))
  def card(x,team,dd):
-  y0=98
-  d.rounded_rectangle([x,y0-6,x+607,H-70],radius=14,fill=(255,255,255))
-  d.rounded_rectangle([x,y0-6,x+607,y0+28],radius=14,fill=(0,200,85))
-  d.rectangle([x,y0+14,x+607,y0+28],fill=(0,200,85))
-  d.text((x+14,y0),team.upper()[:26],font=bm,fill=(255,255,255));y=y0+36
-  for i,pl in enumerate(dd["xi"][:11]):
-   d.ellipse([x+8,y-2,x+38,y+18],fill=(0,185,75))
-   d.text((x+14,y),str(i+1),font=bs,fill=(255,255,255))
-   d.text((x+46,y),pl[:28],font=bs,fill=(10,10,10));y+=34
-  d.line([(x+8,y+2),(x+597,y+2)],fill=(0,200,85),width=2)
-  d.text((x+12,y+6),"BENCH:",font=bt,fill=(0,150,60));y+=26
-  for b in dd["bench"][:6]:d.text((x+12,y),f"• {b[:26]}",font=bt,fill=(30,30,30));y+=20
- card(18,h,ld["home"]);card(645,a,ld["away"])
- bw,bh=360,42;bx=(W-bw)//2;by=H-60
- d.rounded_rectangle([bx,by,bx+bw,by+bh],radius=21,fill=(0,218,92))
- d.text((bx+22,by+8),"🟢 UNFILTERED SCORES",font=bm,fill=(255,255,255))
- b=BytesIO();img.save(b,format="JPEG",quality=96);b.seek(0);return b
+  y0=110;cw=515;ch=1075
+  d.rounded_rectangle([x+3,y0+3,x+cw+3,y0+ch+3],radius=20,fill=(0,0,0,60))
+  d.rounded_rectangle([x,y0,x+cw,y0+ch],radius=20,fill=(255,255,255))
+  d.rounded_rectangle([x,y0,x+cw,y0+48],radius=20,fill=(0,200,88))
+  d.rectangle([x,y0+24,x+cw,y0+48],fill=(0,200,88))
+  d.text((x+14,y0+10),team.upper()[:20],font=bm,fill=(255,255,255))
+  y=y0+56
+  for i,p in enumerate(dd["xi"][:11]):
+   d.ellipse([x+10,y,x+36,y+26],fill=(0,185,80))
+   num=p.get("j","") or str(i+1)
+   d.text((x+15 if len(num)==1 else x+12,y+3),num[:2],font=bs,fill=(255,255,255))
+   d.text((x+46,y+2),p.get("n","")[:22],font=bs,fill=(15,15,15))
+   y+=36
+  d.line([(x+10,y+2),(x+cw-10,y+2)],fill=(0,200,88,90),width=2);y+=12
+  d.text((x+12,y),"BENCH:",font=bt,fill=(0,150,60));y+=18
+  for b in dd["bench"][:6]:
+   txt=f"• {b.get('j','')} {b.get('n','')[:20]}" if isinstance(b,dict) else f"• {str(b)[:22]}"
+   d.text((x+12,y),txt,font=bt,fill=(60,60,60));y+=18
+ card(15,h,ld["home"]);card(550,a,ld["away"])
+ bw,bh=340,40;bx=(W-bw)//2;by=H-52
+ d.rounded_rectangle([bx,by,bx+bw,by+bh],radius=20,fill=(0,210,85))
+ d.text((bx+18,by+8),"🟢 UNFILTERED SCORES",font=bm,fill=(255,255,255))
+ b=BytesIO();img.save(b,format="JPEG",quality=97);b.seek(0);return b
+
 def make_kick(h,a):
  W,H=1280,720
  img=Image.new("RGB",(W,H),(8,14,35))
@@ -203,12 +214,8 @@ def make_ft_final(h,a,hs,asc,goals,real_url=None):
     r=requests.get(real_url,timeout=20,headers={"User-Agent":"Mozilla/5.0"})
     if r.status_code==200:
      orig=Image.open(BytesIO(r.content)).convert("RGB")
-     iw,ih=orig.size
-     ra=max(W/iw,top_h/ih)
-     nw,nh=int(iw*ra),int(ih*ra)
-     rs=orig.resize((nw,nh),Image.LANCZOS)
-     x=(W-nw)//2
-     can.paste(rs,(x,0))
+     iw,ih=orig.size;ra=max(W/iw,top_h/ih);nw,nh=int(iw*ra),int(ih*ra)
+     rs=orig.resize((nw,nh),Image.LANCZOS);x=(W-nw)//2;can.paste(rs,(x,0))
    except:pass
   d.rectangle([0,top_h,W,H],fill=(0,0,0))
   d.line([(20,top_h+6),(W-20,top_h+6)],fill=(0,230,90),width=3)
@@ -220,19 +227,15 @@ def make_ft_final(h,a,hs,asc,goals,real_url=None):
   except:bf=bm=bs=bb=ImageFont.load_default()
   d.text((30,top_h+18),h[:20].upper(),font=bm,fill=(255,255,255))
   d.text((W-240,top_h+18),a[:20].upper(),font=bm,fill=(255,255,255))
-  score_txt=f"{hs} - {asc}"
-  d.text((W//2-85,top_h+8),score_txt,font=bf,fill=(255,255,255))
+  d.text((W//2-85,top_h+8),f"{hs} - {asc}",font=bf,fill=(255,255,255))
   d.text((W//2-18,top_h+92),"FT",font=bb,fill=(0,230,90))
-  home_goals=[g for g in goals if g["team"]=="home"]
-  away_goals=[g for g in goals if g["team"]=="away"]
+  hg=[g for g in goals if g["team"]=="home"];ag=[g for g in goals if g["team"]=="away"]
   y1=top_h+120
-  for g in home_goals[:5]:
-   txt=f"{g['min']}' | {g['scorer'][:18]} {g['extra']}".strip()
-   d.text((28,y1),txt,font=bs,fill=(230,230,230));y1+=26
+  for g in hg[:5]:
+   d.text((28,y1),f"{g['min']}' | {g['scorer'][:18]} {g['extra']}",font=bs,fill=(230,230,230));y1+=26
   y2=top_h+120
-  for g in away_goals[:5]:
-   txt=f"{g['scorer'][:18]} {g['extra']} | {g['min']}'".strip()
-   d.text((W//2+18,y2),txt,font=bs,fill=(210,210,210));y2+=26
+  for g in ag[:5]:
+   d.text((W//2+18,y2),f"{g['scorer'][:18]} {g['extra']} | {g['min']}'",font=bs,fill=(210,210,210));y2+=26
   bw,bh=310,34;bx=(W-bw)//2;by=H-42
   d.rounded_rectangle([bx,by,bx+bw,by+bh],radius=17,fill=(0,210,85))
   d.text((bx+16,by+6),"🟢 UNFILTERED SCORES",font=bs,fill=(255,255,255))
@@ -250,12 +253,12 @@ def post_fb(msg,img):
 def is_posted(k):return k in state.get("posted",[])
 def mark(k):
  p=state.get("posted",[]);p.append(k);state["posted"]=p[-1000:];save_state(state)
-def get_winning_scorer(ft_goals,hs,asc,h,a): # NEW - pick winning team scorer
+def get_winning_scorer(ft_goals,hs,asc,h,a):
  try:
   if not ft_goals:return None
-  win_side="home" if hs>asc else "away" if asc>hs else "home"
-  winners=[g for g in ft_goals if g["team"]==win_side]
-  if winners:return winners[-1]["scorer"] # last scorer usually main
+  win="home" if hs>asc else "away" if asc>hs else "home"
+  winners=[g for g in ft_goals if g["team"]==win]
+  if winners:return winners[-1]["scorer"]
   return ft_goals[-1]["scorer"]
  except:return None
 def process_live():
@@ -266,8 +269,7 @@ def process_live():
   for ev in data.get("events",[]):
    try:
     ev_date=ev.get("date","")
-    if not ev_date:continue
-    if ev_date[:10]!=today:continue # keep today only
+    if not ev_date or ev_date[:10]!=today:continue
     comp=ev.get("competitions",[{}])[0]
     status=comp.get("status",{}).get("type",{}).get("description","")
     stype=comp.get("status",{}).get("type",{}).get("state","")
@@ -285,7 +287,8 @@ def process_live():
       ld=fetch_lineups(eid)
       if ld:
        img=make_lineup(h,a,ld)
-       msg=f"📋 LINEUPS + BENCH\n{h} vs {a}\n\n{h}: {', '.join([n.split('(')[0][:20] for n in ld['home']['xi'][:11]])}\nBench: {', '.join(ld['home']['bench'][:4])}\n\n{a}: {', '.join([n.split('(')[0][:20] for n in ld['away']['xi'][:11]])}\nBench: {', '.join(ld['away']['bench'][:4])}\n\nWho wins? 👇 Follow 🟢 UNFILTERED SCORES{HT}"
+       def fmt(p):return p.get("n","")[:20] if isinstance(p,dict) else str(p)[:20]
+       msg=f"📋 LINEUPS + BENCH\n{h} vs {a}\n\n{h}: {', '.join([fmt(n) for n in ld['home']['xi'][:11]])}\nBench: {', '.join([fmt(n) for n in ld['home']['bench'][:4]])}\n\n{a}: {', '.join([fmt(n) for n in ld['away']['xi'][:11]])}\nBench: {', '.join([fmt(n) for n in ld['away']['bench'][:4]])}\n\nWho wins? 👇 Follow 🟢 UNFILTERED SCORES{HT}"
        if post_fb(msg,img):mark(k);cnt+=1
     if stype=="in":
      k=f"kickoff_{eid}"
@@ -344,13 +347,9 @@ def process_live():
     is_ht=s_low=="halftime" or n_low=="status_halftime"
     is_ft=s_low in ["final","full time","ft"] or n_low in ["status_final","status_full_time"]
     if is_ht or is_ft:
-     if not is_recent(ev_date):continue # NEW - skip yesterday/old games
-     if is_ht:
-      k=f"ht_{eid}"
-      lb="⏸️ HALFTIME"
-     else:
-      k=f"ft_{eid}_{hs}_{asc}"
-      lb="✅ FULL TIME"
+     if not is_recent(ev_date):continue
+     k=f"ht_{eid}" if is_ht else f"ft_{eid}_{hs}_{asc}"
+     lb="⏸️ HALFTIME" if is_ht else "✅ FULL TIME"
      if not is_posted(k):
       ft_goals=[]
       for d in details:
@@ -364,36 +363,27 @@ def process_live():
        team_side="home" if tid==home.get("team",{}).get("id","") else "away"
        extra="(P)" if "Penalty" in t else "(OG)" if "Own" in t else ""
        ft_goals.append({"scorer":sc,"min":mn.replace("'",""),"extra":extra,"team":team_side})
-      img=None
-      real_url=None
-      win_scorer=get_winning_scorer(ft_goals,hs,asc,h,a) # NEW
+      real_url=None;win_scorer=get_winning_scorer(ft_goals,hs,asc,h,a)
       if is_ft:
        for feed_url in ["https://www.skysports.com/rss/12040","http://feeds.bbci.co.uk/sport/football/rss.xml"]:
         try:
          feed=feedparser.parse(feed_url)
          for entry in feed.entries[:25]:
           tlw=entry.title.lower()
-          hw=h.lower().split()[-1]
-          aw=a.lower().split()[-1]
-          scorer_match=win_scorer and win_scorer.lower().split()[0] in tlw # NEW - prefer winning scorer
-          teams_match=hw in tlw and aw in tlw
-          if teams_match or scorer_match:
+          hw=h.lower().split()[-1];aw=a.lower().split()[-1]
+          if (hw in tlw and aw in tlw) or (win_scorer and win_scorer.lower().split()[0] in tlw):
            ru=get_img(entry)
            if ru:real_url=ru;break
          if real_url:break
         except:continue
-      if is_ft:
-       img=make_ft_final(h,a,hs,asc,ft_goals,real_url)
+      img=make_ft_final(h,a,hs,asc,ft_goals,real_url) if is_ft else None
       if not img:
-       if is_ht:
-        img=make_hd([lb.replace("⏸️ ",""),f"{h} {hs}-{asc}",a])
+       if is_ht:img=make_hd([lb.replace("⏸️ ",""),f"{h} {hs}-{asc}",a])
        else:
         lines=[lb.replace("✅ ",""),f"{h} {hs}-{asc} {a}"]
         for g in ft_goals[:4]:lines.append(f"{g['min']}' {g['scorer']} {g['extra']}")
         img=make_hd(lines)
-      scorers_txt=""
-      if ft_goals:
-       scorers_txt="\n"+" | ".join([f"{g['min']}' {g['scorer']}{g['extra']}" for g in ft_goals])
+      scorers_txt="\n"+" | ".join([f"{g['min']}' {g['scorer']}{g['extra']}" for g in ft_goals]) if ft_goals else ""
       msg=f"{lb}\n{h} {hs}-{asc} {a}{scorers_txt}\n\nFollow 🟢 UNFILTERED SCORES{HT}"
       if post_fb(msg,img):mark(k);cnt+=1
    except:continue
