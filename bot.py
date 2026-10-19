@@ -1,11 +1,12 @@
 import os,json,time,requests,re
-from datetime import datetime,timezone
+from datetime import datetime,timezone,timedelta
 from io import BytesIO
 from PIL import Image,ImageDraw,ImageFont
 import feedparser
 FB_TOKEN=os.getenv("FB_TOKEN","").strip()
 FB_PAGE_ID=os.getenv("FB_PAGE_ID","1293090263895541").strip()
 STATE_FILE="state.json"
+RECENT_HOURS=3 # NEW - prevents yesterday spam
 def load_state():
  try:
   with open(STATE_FILE,"r") as f:return json.load(f)
@@ -20,6 +21,13 @@ def safe_list(x):
  if isinstance(x,dict):return [x]
  if not x:return []
  return [x]
+def is_recent(ev_date_str): # NEW - check if game ended recently
+ try:
+  dt=datetime.fromisoformat(ev_date_str.replace("Z","+00:00"))
+  now=datetime.now(timezone.utc)
+  return (now-dt) < timedelta(hours=RECENT_HOURS+2) # +2 for game duration
+ except:return True
+
 ESPN_LEAGUES=[
 "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.1/scoreboard",
 "https://site.api.espn.com/apis/site/v2/sports/soccer/eng.2/scoreboard",
@@ -184,7 +192,6 @@ def make_real(url):
   dr.text((bx+20,by+7),"🟢 UNFILTERED SCORES",font=bs,fill=(255,255,255))
   b=BytesIO();can.save(b,format="JPEG",quality=96);b.seek(0);return b
  except:return None
-# NEW - FT PERFECT WITH SCORERS LIKE MILAN 3-2 EXAMPLE
 def make_ft_final(h,a,hs,asc,goals,real_url=None):
  try:
   W,H=1080,1350
@@ -203,7 +210,6 @@ def make_ft_final(h,a,hs,asc,goals,real_url=None):
      x=(W-nw)//2
      can.paste(rs,(x,0))
    except:pass
-  # bottom black panel
   d.rectangle([0,top_h,W,H],fill=(0,0,0))
   d.line([(20,top_h+6),(W-20,top_h+6)],fill=(0,230,90),width=3)
   try:
@@ -212,13 +218,11 @@ def make_ft_final(h,a,hs,asc,goals,real_url=None):
    bs=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",20)
    bb=ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",18)
   except:bf=bm=bs=bb=ImageFont.load_default()
-  # teams + score
   d.text((30,top_h+18),h[:20].upper(),font=bm,fill=(255,255,255))
   d.text((W-240,top_h+18),a[:20].upper(),font=bm,fill=(255,255,255))
   score_txt=f"{hs} - {asc}"
   d.text((W//2-85,top_h+8),score_txt,font=bf,fill=(255,255,255))
   d.text((W//2-18,top_h+92),"FT",font=bb,fill=(0,230,90))
-  # scorers split
   home_goals=[g for g in goals if g["team"]=="home"]
   away_goals=[g for g in goals if g["team"]=="away"]
   y1=top_h+120
@@ -229,7 +233,6 @@ def make_ft_final(h,a,hs,asc,goals,real_url=None):
   for g in away_goals[:5]:
    txt=f"{g['scorer'][:18]} {g['extra']} | {g['min']}'".strip()
    d.text((W//2+18,y2),txt,font=bs,fill=(210,210,210));y2+=26
-  # badge
   bw,bh=310,34;bx=(W-bw)//2;by=H-42
   d.rounded_rectangle([bx,by,bx+bw,by+bh],radius=17,fill=(0,210,85))
   d.text((bx+16,by+6),"🟢 UNFILTERED SCORES",font=bs,fill=(255,255,255))
@@ -247,6 +250,14 @@ def post_fb(msg,img):
 def is_posted(k):return k in state.get("posted",[])
 def mark(k):
  p=state.get("posted",[]);p.append(k);state["posted"]=p[-1000:];save_state(state)
+def get_winning_scorer(ft_goals,hs,asc,h,a): # NEW - pick winning team scorer
+ try:
+  if not ft_goals:return None
+  win_side="home" if hs>asc else "away" if asc>hs else "home"
+  winners=[g for g in ft_goals if g["team"]==win_side]
+  if winners:return winners[-1]["scorer"] # last scorer usually main
+  return ft_goals[-1]["scorer"]
+ except:return None
 def process_live():
  today=datetime.now(timezone.utc).strftime("%Y-%m-%d");cnt=0
  for lu in ESPN_LEAGUES:
@@ -254,7 +265,9 @@ def process_live():
   if not data:continue
   for ev in data.get("events",[]):
    try:
-    if ev.get("date","")[:10]!=today:continue
+    ev_date=ev.get("date","")
+    if not ev_date:continue
+    if ev_date[:10]!=today:continue # keep today only
     comp=ev.get("competitions",[{}])[0]
     status=comp.get("status",{}).get("type",{}).get("description","")
     stype=comp.get("status",{}).get("type",{}).get("state","")
@@ -331,6 +344,7 @@ def process_live():
     is_ht=s_low=="halftime" or n_low=="status_halftime"
     is_ft=s_low in ["final","full time","ft"] or n_low in ["status_final","status_full_time"]
     if is_ht or is_ft:
+     if not is_recent(ev_date):continue # NEW - skip yesterday/old games
      if is_ht:
       k=f"ht_{eid}"
       lb="⏸️ HALFTIME"
@@ -352,16 +366,18 @@ def process_live():
        ft_goals.append({"scorer":sc,"min":mn.replace("'",""),"extra":extra,"team":team_side})
       img=None
       real_url=None
+      win_scorer=get_winning_scorer(ft_goals,hs,asc,h,a) # NEW
       if is_ft:
-       # EXHAUST ALL SOURCES
        for feed_url in ["https://www.skysports.com/rss/12040","http://feeds.bbci.co.uk/sport/football/rss.xml"]:
         try:
          feed=feedparser.parse(feed_url)
-         for entry in feed.entries[:20]:
+         for entry in feed.entries[:25]:
           tlw=entry.title.lower()
           hw=h.lower().split()[-1]
           aw=a.lower().split()[-1]
-          if hw in tlw and aw in tlw:
+          scorer_match=win_scorer and win_scorer.lower().split()[0] in tlw # NEW - prefer winning scorer
+          teams_match=hw in tlw and aw in tlw
+          if teams_match or scorer_match:
            ru=get_img(entry)
            if ru:real_url=ru;break
          if real_url:break
