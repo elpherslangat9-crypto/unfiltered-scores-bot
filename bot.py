@@ -105,20 +105,42 @@ def make_real(url):
   r=requests.get(url,timeout=15,headers={"User-Agent":"Mozilla/5.0"});orig=Image.open(BytesIO(r.content)).convert("RGB");W,H=1280,720;can=Image.new("RGB",(W,H),(0,0,0));iw,ih=orig.size;ra=min(W/iw,H/ih);nw,nh=int(iw*ra),int(ih*ra);rs=orig.resize((nw,nh),Image.LANCZOS);can.paste(rs,((W-nw)//2,(H-nh)//2))
   d=ImageDraw.Draw(can,"RGBA");bw,bh=300,36;bx=(W-bw)//2;d.rounded_rectangle([bx,H-bh-12,bx+bw,H-12],radius=18,fill=(0,210,85,230));d.text((bx+20,H-29),"UNFILTERED SCORES",font=font(20,1),fill=(255,255,255));b=BytesIO();can.save(b,format="JPEG",quality=96);b.seek(0);return b
  except:return None
-def make_ft_final(h,a,hs,asc,goals,real_url=None):
+def make_ft_final(h,a,hs,asc,goals,real_url=None,logos=None):
  try:
-  W,H=1080,1350;can=Image.new("RGB",(W,H),(10,18,42));d=ImageDraw.Draw(can,"RGBA")
-  for y in range(H):d.line([(0,y),(W,y)],fill=(int(10+y*0.04),int(18+y*0.06),int(42+y*0.09)))
-  th=750 if real_url else 0
+  W,H=1080,1350;can=Image.new("RGB",(W,H),(10,18,42))
   if real_url:
-   try:r=requests.get(real_url,timeout=15,headers={"User-Agent":"Mozilla/5.0"});orig=Image.open(BytesIO(r.content)).convert("RGB");iw,ih=orig.size;ra=max(W/iw,th/ih);nw,nh=int(iw*ra),int(ih*ra);rs=orig.resize((nw,nh),Image.LANCZOS);can.paste(rs,((W-nw)//2,0));d.rectangle([0,th-180,W,th+400],fill=(0,0,0,160))
-   except:th=0
-  yb=th+20 if real_url else 280;bf=font(110,1);bm=font(26,1);bs=font(20,1);bb=font(18,1)
-  d.rounded_rectangle([20,yb,W-20,yb+420],radius=20,fill=(0,0,0,70));d.line([(20,yb+2),(W-20,yb+2)],fill=(0,230,90),width=4);d.text((30,yb+18),h[:18].upper(),font=bm,fill=(255,255,255));d.text((W-30,yb+18),a[:18].upper(),font=bm,fill=(255,255,255),anchor="ra");d.text((W//2,yb+90),f"{hs} - {asc}",font=bf,fill=(255,255,255),anchor="mm");d.text((W//2,yb+170),"FT",font=bb,fill=(0,230,90),anchor="mm")
-  y1=y2=yb+210
-  for g in [x for x in goals if x["team"]=="home"][:6]:d.text((30,y1),f"{g['min']}' {g['scorer'][:20]} {g['extra']}",font=bs,fill=(255,255,255));y1+=32
-  for g in [x for x in goals if x["team"]=="away"][:6]:d.text((W-30,y2),f"{g['scorer'][:20]} {g['extra']} {g['min']}'",font=bs,fill=(200,200,200),anchor="ra");y2+=32
-  bw,bh=320,38;bx=(W-bw)//2;d.rounded_rectangle([bx,H-50,bx+bw,H-12],radius=19,fill=(0,210,85));d.text((bx+18,H-43),"UNFILTERED SCORES",font=bm,fill=(255,255,255));b=BytesIO();can.save(b,format="JPEG",quality=97);b.seek(0);return b
+   try:
+    r=requests.get(real_url,timeout=15,headers={"User-Agent":"Mozilla/5.0"})
+    if r.status_code==200:
+     orig=Image.open(BytesIO(r.content)).convert("RGB");iw,ih=orig.size;ra=max(W/iw,H/ih);nw,nh=int(iw*ra),int(ih*ra);rs=orig.resize((nw,nh),Image.LANCZOS);can.paste(rs,((W-nw)//2,(H-nh)//2))
+   except:pass
+  else:
+   d0=ImageDraw.Draw(can)
+   for y in range(H):d0.line([(0,y),(W,y)],fill=(int(10+y*0.04),int(18+y*0.06),int(42+y*0.09)))
+  d=ImageDraw.Draw(can,"RGBA")
+  for y in range(H//2,H):alpha=int((y-H//2)/(H//2)*190);d.line([(0,y),(W,y)],fill=(0,0,0,alpha))
+  cx,cy=30,H-380;cw,ch=W-60,340
+  d.rounded_rectangle([cx,cy,cx+cw,cy+ch],radius=22,fill=(18,18,20,175),outline=(255,255,255,30))
+  bf=font(90,1);bm=font(22,1);bs=font(17,1);bt=font(13,1)
+  li=[]
+  if logos:
+   for u in logos:
+    try:im=Image.open(BytesIO(requests.get(u,timeout=5,headers={"User-Agent":"Mozilla/5.0"}).content)).convert("RGBA").resize((72,72),Image.LANCZOS);li.append(im)
+    except:li.append(None)
+  if li and li[0]:can.paste(li[0],(cx+22,cy+18),li[0])
+  if len(li)>1 and li[1]:can.paste(li[1],(cx+cw-94,cy+18),li[1])
+  d.text((W//2,cy+14),"FULL TIME",font=bt,fill=(200,200,200),anchor="mm")
+  d.text((W//2-58,cy+66),f"{hs}",font=bf,fill=(255,255,255),anchor="mm")
+  d.text((W//2,cy+66),"-",font=bf,fill=(0,230,90),anchor="mm")
+  d.text((W//2+58,cy+66),f"{asc}",font=bf,fill=(255,255,255),anchor="mm")
+  y=cy+134
+  for g in [x for x in goals if x["team"]=="home"][:5]:
+   d.text((cx+16,y),f"{g['min']}' {g['scorer'][:18]} {g['extra']}",font=bs,fill=(255,255,255));y+=26
+  y=cy+134
+  for g in [x for x in goals if x["team"]=="away"][:5]:
+   d.text((cx+cw-16,y),f"{g['scorer'][:18]} {g['extra']} {g['min']}'",font=bs,fill=(210,210,210),anchor="ra");y+=26
+  bw,bh=240,26;bx=(W-bw)//2;by=H-34;d.rounded_rectangle([bx,by,bx+bw,by+bh],radius=13,fill=(0,210,85));d.text((bx+12,by+4),"UNFILTERED SCORES",font=bt,fill=(255,255,255))
+  b=BytesIO();can.save(b,format="JPEG",quality=97);b.seek(0);return b
  except:return None
 def post_fb(msg,img):
  if len(FB_TOKEN)<50:return False
@@ -189,7 +211,7 @@ def process_live():
           if ru:real_url=ru;break
         if real_url:break
        except:continue
-     img=make_ft_final(h,a,hs,asc,ft_goals,real_url) if is_ft else make_hd([lb,f"{h} {hs}-{asc}",a])
+     img=make_ft_final(h,a,hs,asc,ft_goals,real_url,[hl,al]) if is_ft else make_hd([lb,f"{h} {hs}-{asc}",a])
      if not img:img=make_hd([lb,f"{h} {hs}-{asc} {a}"]+[f"{g['min']}' {g['scorer']}" for g in ft_goals[:3]])
      txt="\n"+" | ".join([f"{g['min']}' {g['scorer']}{g['extra']}" for g in ft_goals]) if ft_goals else ""
      if post_fb(f"{lb}\n{h} {hs}-{asc} {a}{txt}\n\nFollow UNFILTERED SCORES{HT}",img):mark(k);mark(f"ft_photo_{eid}") if real_url else None;cnt+=1
