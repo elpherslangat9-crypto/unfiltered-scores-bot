@@ -80,12 +80,18 @@ def make_kick(h,a):
  for y in range(H):d.line([(0,y),(W,y)],fill=(int(8+y*0.12),int(14+y*0.18),int(35+y*0.25)))
  d.text((80,180),"KICK OFF!",font=font(60,1),fill=(0,230,90));d.text((80,260),h[:30],font=font(32,1),fill=(255,255,255));d.text((80,305),"VS",font=font(22,1),fill=(0,230,90));d.text((80,335),a[:30],font=font(32,1),fill=(255,255,255))
  bw,bh=360,42;bx=(W-bw)//2;d.rounded_rectangle([bx,H-60,bx+bw,H-18],radius=21,fill=(0,218,92));d.text((bx+22,H-52),"UNFILTERED SCORES",font=font(32,1),fill=(255,255,255));b=BytesIO();img.save(b,format="JPEG",quality=96);b.seek(0);return b
+# FIXED - WAS CAUSING SYNTAX ERROR
 def fetch_og(u):
- try:t=requests.get(u,timeout=10,headers={"User-Agent":"Mozilla/5.0"}).text
-  for pat in [r'property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']',r'twitter:image[^>]+content=["\']([^"\']+)["\']']:
-   m=re.search(pat,t,re.I)
-   if m:return ("https:"+m.group(1) if m.group(1).startswith("//") else m.group(1)).replace("/480/","/1280/")
+ try:
+  t=requests.get(u,timeout=10,headers={"User-Agent":"Mozilla/5.0"}).text
+  m=re.search(r'og:image.*?content="([^"]+)"',t,re.I)
+  if not m:m=re.search(r"og:image.*?content='([^']+)'",t,re.I)
+  if m:
+   url=m.group(1)
+   if url.startswith("//"):url="https:"+url
+   return url.replace("/480/","/1280/")
  except:pass
+ return None
 def get_img(e):
  try:
   if hasattr(e,'media_content'):
@@ -111,7 +117,6 @@ def make_ft_final(h,a,hs,asc,goals,real_url=None,logos=None):
   for g in [x for x in goals if x["team"]=="away"][:5]:d.text((cx+cw-16,y),f"{g['scorer'][:18]} {g['extra']} {g['min']}'",font=bs,fill=(210,210,210),anchor="ra");y+=26
   bw,bh=240,26;bx=(W-bw)//2;by=H-34;d.rounded_rectangle([bx,by,bx+bw,by+bh],radius=13,fill=(0,210,85));d.text((bx+12,by+4),"UNFILTERED SCORES",font=bt,fill=(255,255,255));b=BytesIO();can.save(b,format="JPEG",quality=97);b.seek(0);return b
  except:return None
-# FIXED TABLE - NOW WRITES UNFILTERED SCORES
 def make_pred_table(games,res=None):
  W,H=1280,900;img=Image.new("RGB",(W,H),(10,18,38));d=ImageDraw.Draw(img);fb=font(30,1);fm=font(19,1);fr=font(17,0);fs=font(15,1)
  d.rectangle([0,0,W,90],fill=(0,210,95));d.text((W//2,18),"DAILY 7 SURE GOALS - UNFILTERED SCORES",font=fb,fill=(255,255,255),anchor="mt");d.text((W//2,55),"Goals Only | 1.51+ | H2H & Form Analyzed",font=fs,fill=(255,255,255),anchor="mt")
@@ -122,12 +127,10 @@ def make_pred_table(games,res=None):
   ry=y+idx*85;fill=(18,28,55) if idx%2==0 else (22,35,68);d.rounded_rectangle([20,ry,W-20,ry+75],radius=10,fill=fill);d.ellipse([35,ry+20,70,ry+55],fill=(0,210,95));d.text((45,ry+25),str(idx+1),font=fs,fill=(255,255,255));d.text((x[1],ry+12),g['match'],font=fr,fill=(255,255,255));d.rounded_rectangle([x[2]-10,ry+15,x[2]+140,ry+50],radius=8,fill=(35,55,95));d.text((x[2],ry+20),g['pick'],font=fm,fill=(255,215,0));d.text((x[3],ry+25),f"@{g['odds']}",font=fm,fill=(255,255,255));r=res[idx] if res and idx<len(res) else "-";d.rounded_rectangle([x[4],ry+15,x[4]+110,ry+55],radius=8,fill=(0,210,95) if r=="✅" else (200,50,50) if r=="🚫" else (60,60,60));d.text((x[4]+35,ry+25),r,font=fm,fill=(255,255,255))
  fy=y+7*85+20;d.rounded_rectangle([20,fy,W-20,fy+55],radius=12,fill=(0,210,95));d.text((40,fy+15),"Total Odds: ~19.0 | UNFILTERED SCORES",font=fm,fill=(255,255,255));d.text((W-280,fy+15),"UNFILTERED SCORES",font=fm,fill=(255,255,255))
  b=BytesIO();img.save(b,format="JPEG",quality=95);b.seek(0);return b
-# FIXED FOR ALL POSTS VISIBLE TO EVERYONE
 def post_fb(msg,img):
  if not img or len(FB_TOKEN)<50:return False
  try:
-  # FIX: privacy EVERYONE so non-followers see it + published true so shows from first to last
-  data={"message":msg,"access_token":FB_TOKEN,"published":"true","privacy":'{"value":"EVERYONE"}',"feed_targeting":'{"genders":[1,2]}'}
+  data={"message":msg,"access_token":FB_TOKEN,"published":"true","privacy":'{"value":"EVERYONE"}'}
   r=requests.post(f"https://graph.facebook.com/v19.0/{FB_PAGE_ID}/photos",files={"source":("hd.jpg",img,"image/jpeg")},data=data,timeout=30)
   return r.status_code==200
  except:return False
@@ -142,7 +145,7 @@ def process_live():
     eid=ev.get("id","")
     if eid in seen:continue
     seen.add(eid)
-    comp=ev.get("competitions",[{}])[0];status=comp.get("status",{}).get("type",{}).get("description","");stype=comp.get("status",{}).get("type",{}).get("state","");nstate=comp.get("status",{}).get("type",{}).get("name","");comps=comp.get("competitors",[])
+    comp=ev.get("competitions",[{}])[0];status=comp.get("status",{}).get("type",{}).get("description","");stype=comp.get("status",{}).get("type",{}).get("state","");comps=comp.get("competitors",[])
     if len(comps)<2:continue
     home=next((c for c in comps if c.get("homeAway")=="home"),comps[0]);away=next((c for c in comps if c.get("homeAway")=="away"),comps[1]);h=home.get("team",{}).get("displayName","Home");a=away.get("team",{}).get("displayName","Away")
     hl=home.get("team",{}).get("logo","");al=away.get("team",{}).get("logo","");hs,asc=get_score(comps);details=safe_list(comp.get("details",[]))
