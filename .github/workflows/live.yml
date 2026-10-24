@@ -1,34 +1,51 @@
-name: Unfiltered Scores V23 - 10M SAFE FAST
+name: Unfiltered Scores V25 - FORCE REACH
 on:
   schedule:
-    - cron: '*/10 * * * *'
+    - cron: '25,55 * * * *'  # Human times like 12:25, 12:55 not 12:00
   workflow_dispatch:
 
 concurrency:
-  group: unfiltered-live-v24
-  cancel-in-progress: true
+  group: unfiltered-live-v25-force
+  cancel-in-progress: false
 
 jobs:
   live:
     runs-on: ubuntu-latest
-    timeout-minutes: 9
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
+          cache: 'pip'
+
       - name: Install deps
         run: pip install requests pillow feedparser
-      - name: Run Bot V24 - 10M Loop
+
+      - name: Force Human Pattern
+        run: |
+          DELAY=$((RANDOM % 180 + 30))
+          echo "Waiting $DELAY seconds to look human..."
+          sleep $DELAY
+
+      - name: Run Bot - FORCE SHOW
         env:
           FB_TOKEN: ${{ secrets.FB_TOKEN }}
           FB_PAGE_ID: ${{ secrets.FB_PAGE_ID }}
+          FORCE_PHOTO_POST: "1"  # Tell bot.py to use photo method
+          FB_REACH_FIX: "1"
         run: python bot.py
+
       - name: Save State
         if: always()
         run: |
+          git pull --rebase || true
           git config user.name "bot"
           git config user.email "bot@unfiltered.com"
           git add state.json || true
-          git commit -m "state update" || true
+          git diff --staged --quiet || git commit -m "state update [skip ci]" || true
           git push || true
